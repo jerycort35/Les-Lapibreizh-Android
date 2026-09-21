@@ -1,0 +1,14 @@
+LES LAPIBREIZH V0.5.5 — VERSION ANDROID VISIBLE
+
+Les 3 fichiers sont volontairement à la racine du ZIP.
+
+À placer dans Gitling :
+1. v055_restore_and_menus.py  → RACINE du dépôt
+2. build-v055.yml             → .github/workflows/build-v055.yml
+3. LISEZ-MOI.txt              → facultatif
+
+IMPORTANT :
+Le script repart du commit stable V0.5.3 :
+fb5a62b650376825ee43498d99e79bd95c7420f1
+
+Puis : Stage all → Commit → Push.
