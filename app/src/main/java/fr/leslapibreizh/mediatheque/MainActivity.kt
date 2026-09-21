@@ -32,7 +32,7 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 
 /**
- * V0.4 : évolution de la V0.3 avec habillage des maquettes validées, tri explicite, favoris,
+ * V0.4.1 : correction de la composition visuelle à partir des maquettes validées, tri et favoris,
  * recherche de photos strictement identiques et mise à la corbeille avec accord système.
  * Une copie n'efface JAMAIS l'original ; une mise à la corbeille exige deux confirmations.
  */
@@ -52,10 +52,12 @@ class MainActivity : AppCompatActivity() {
     private var shownItems = emptyList<Media>()
     private var albumFilter: String? = null
     private var categoryFilter: String? = null
-    private var sortMode = 0 // Date ↓, Date ↑, Nom A→Z, Nom Z→A, Taille ↓, Type
+    private var sortMode = 0 // Date ↓, Date ↑, Nom A→Z, Nom Z→A, Taille ↓, Type, Durée ↓
     private var dashboardVisible = false
     private var sortButton: Button? = null
     private var visibleLimit = 120
+    private var imageColumns = 4
+    private var videoColumns = 3
     private var grid: GridView? = null
     private var galleryAdapter: BaseAdapter? = null
     private var selectionActions: View? = null
@@ -81,7 +83,8 @@ class MainActivity : AppCompatActivity() {
         val title: String,
         val album: String,
         val date: Long,
-        val size: Long
+        val size: Long,
+        val duration: Long = 0L
     ) {
         val key: String get() = "${if (mime.startsWith("video/")) "v" else "i"}:$id"
     }
@@ -147,84 +150,151 @@ class MainActivity : AppCompatActivity() {
 
     private fun navBar(active: Route): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        val items = listOf(
-            Triple("⌂ Accueil", Route.HOME, 0),
-            Triple("▧ Images", Route.IMAGES, 0),
-            Triple("▶ Vidéos", Route.VIDEOS, 0),
-            Triple("♥ Favoris", Route.FAVORITES, 0),
-            Triple("⚙ Réglages", Route.SETTINGS, 0)
+        setBackgroundColor(black)
+        val entries = listOf(
+            Triple("⌂", "Accueil", Route.HOME),
+            Triple("▧", "Images", Route.IMAGES),
+            Triple("▶", "Vidéos", Route.VIDEOS),
+            Triple("♥", "Favoris", Route.FAVORITES),
+            Triple("⚙", "Réglages", Route.SETTINGS)
         )
-        items.forEach { (label, target, _) ->
-            val button = action(label) {
-                when(target) {
-                    Route.HOME -> showHome()
-                    Route.SETTINGS -> showSettings()
-                    else -> navigate(target)
+        entries.forEach { (symbol, name, destination) ->
+            val item = LinearLayout(this@MainActivity).apply {
+                orientation=LinearLayout.VERTICAL
+                gravity=Gravity.CENTER
+                setBackground(shape(if (active == destination) Color.rgb(77,53,24) else black,
+                    if (active == destination) gold else Color.rgb(75,56,30), 7))
+                val glyph=TextView(this@MainActivity).apply {
+                    text=symbol; textSize=20f; gravity=Gravity.CENTER
+                    setTextColor(if (active == destination) cream else gold)
                 }
-            }.apply {
-                textSize = 10f
-                if (active == target) {
-                    setBackground(shape(Color.rgb(85, 62, 26), gold, 10))
-                    setTextColor(Color.WHITE)
+                val caption=TextView(this@MainActivity).apply {
+                    text=name; textSize=10f; gravity=Gravity.CENTER; setTextColor(cream)
                 }
+                addView(glyph,LinearLayout.LayoutParams(-1,dp(28)))
+                addView(caption,LinearLayout.LayoutParams(-1,dp(18)))
+                setOnClickListener {
+                    when (destination) {
+                        Route.HOME -> showHome()
+                        Route.SETTINGS -> showSettings()
+                        else -> navigate(destination)
+                    }
+                }
+                isClickable=true; isFocusable=true
+                contentDescription=name
             }
-            addView(button, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
+            addView(item,LinearLayout.LayoutParams(0,dp(53),1f).apply {
                 marginStart=dp(1); marginEnd=dp(1)
             })
         }
     }
 
-    private fun homeTile(art: Int, title: String, detail: String, target: Route): LinearLayout =
+    /** An approved, text-bearing image is an actual button, never a decorative fake control. */
+    private fun artworkButton(art: Int, description: String, onClick: () -> Unit): ImageView =
+        ImageView(this).apply {
+            setImageResource(art)
+            scaleType=ImageView.ScaleType.FIT_XY
+            contentDescription=description
+            isClickable=true
+            isFocusable=true
+            setOnClickListener { onClick() }
+        }
+
+    private fun homeShortcut(iconRes: Int, label: String, onClick: () -> Unit): LinearLayout =
         LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackground(shape(Color.rgb(26, 23, 19), gold, 12))
-            val image = ImageView(this@MainActivity).apply {
-                setImageResource(art)
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                contentDescription = title
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(3),dp(4),dp(3),dp(4))
+            setBackground(shape(Color.rgb(21,18,14),gold,11))
+            val image=ImageView(this@MainActivity).apply {
+                setImageResource(iconRes)
+                setColorFilter(gold)
             }
-            addView(image, LinearLayout.LayoutParams(-1, dp(83)))
-            addView(heading(title, 16f))
-            addView(note(detail))
-            setOnClickListener { navigate(target) }
-            isClickable = true
-            isFocusable = true
-            contentDescription = "$title. $detail"
+            addView(image,LinearLayout.LayoutParams(dp(31),dp(32)))
+            addView(TextView(this@MainActivity).apply {
+                text=label
+                textSize=11f
+                gravity=Gravity.CENTER
+                setTextColor(cream)
+                typeface=android.graphics.Typeface.create("serif",android.graphics.Typeface.BOLD)
+                maxLines=2
+            },LinearLayout.LayoutParams(-1,dp(37)))
+            setOnClickListener { onClick() }
+            isClickable=true; isFocusable=true; contentDescription=label
         }
 
     private fun showHome() {
-        route = Route.HOME
-        dashboardVisible = false
+        route=Route.HOME
+        dashboardVisible=false
         selected.clear()
-        val screen = root()
-        val content = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        content.addView(hero(R.drawable.hero_home, 279))
-        val pair = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        pair.addView(homeTile(R.drawable.tile_academie, "IMAGES", "Trier • Retrouver • Partager", Route.IMAGES),
-            LinearLayout.LayoutParams(0, dp(161), 1f).apply { marginEnd=dp(3) })
-        pair.addView(homeTile(R.drawable.tile_episodes_video, "MONTAGES VIDÉO", "Trier • Retrouver • Partager", Route.VIDEOS),
-            LinearLayout.LayoutParams(0, dp(161), 1f).apply { marginStart=dp(3) })
-        content.addView(pair)
-        val quick = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        listOf(
-            "⌕ Recherche" to Route.IMAGES,
-            "▤ À classer" to Route.UNSORTED,
-            "♥ Favoris" to Route.FAVORITES,
-            "⚙ Paramètres" to Route.SETTINGS
-        ).forEach { (label,target) ->
-            quick.addView(action(label) {
-                if (label.contains("Recherche") && hasPermission(Route.IMAGES)) showGallery(Route.IMAGES)
-                else navigate(target)
-            },LinearLayout.LayoutParams(0,dp(57),1f).apply {
-                marginStart=dp(2);marginEnd=dp(2)
-            })
+        val screen=root().apply { setPadding(0,0,0,0) }
+        val scroller=ScrollView(this).apply {
+            isFillViewport=true
+            overScrollMode=View.OVER_SCROLL_NEVER
         }
-        content.addView(quick, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin=dp(7) })
-        content.addView(note("Créer • Classer • Partager • Revivre"))
-        screen.addView(ScrollView(this).apply { addView(content) },
-            LinearLayout.LayoutParams(-1,0,1f))
-        screen.addView(navBar(Route.HOME))
+        val content=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setBackgroundColor(black)
+        }
+        // The full original cover is displayed at its own aspect ratio: no cropped rabbit faces or stretched lettering.
+        val cover=ImageView(this).apply {
+            setImageResource(R.drawable.hero_home)
+            scaleType=ImageView.ScaleType.FIT_XY
+            contentDescription="Les deux Lapibreizh, phare breton et titre de la médiathèque"
+        }
+        val usableWidth=resources.displayMetrics.widthPixels
+        val coverHeight=(usableWidth*690f/864f+0.5f).toInt()
+        val cardHeight=(usableWidth-dp(20))/2
+        content.addView(cover,LinearLayout.LayoutParams(-1,coverHeight))
+        val pair=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        pair.addView(artworkButton(R.drawable.home_images_card,"Images : organiser et partager") {
+            navigate(Route.IMAGES)
+        },LinearLayout.LayoutParams(0,cardHeight,1f).apply { marginStart=dp(7); marginEnd=dp(3) })
+        pair.addView(artworkButton(R.drawable.home_videos_card,"Montages vidéo : organiser et partager") {
+            navigate(Route.VIDEOS)
+        },LinearLayout.LayoutParams(0,cardHeight,1f).apply { marginStart=dp(3); marginEnd=dp(7) })
+        content.addView(pair,LinearLayout.LayoutParams(-1,cardHeight).apply { topMargin=dp(7) })
+        val shortcuts=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        val actions=listOf(
+            Triple(android.R.drawable.ic_menu_search,"Retrouver\nune image/vidéo",0),
+            Triple(android.R.drawable.ic_menu_agenda,"À classer",1),
+            Triple(android.R.drawable.ic_menu_gallery,"Renvoyer\ndans la galerie",2),
+            Triple(android.R.drawable.ic_menu_manage,"Paramètres",3)
+        )
+        actions.forEach { (image,label,index) ->
+            val callback: () -> Unit = when(index) {
+                0 -> ({
+                    if(hasPermission(Route.IMAGES)) showGallery(Route.IMAGES)
+                    else navigate(Route.IMAGES)
+                })
+                1 -> ({ navigate(Route.UNSORTED) })
+                2 -> ({
+                    if(hasPermission(Route.IMAGES)) {
+                        showGallery(Route.IMAGES)
+                        toast("Sélectionne les fichiers à renvoyer, puis utilise « Copier » et choisis le dossier Galerie.")
+                    } else navigate(Route.IMAGES)
+                })
+                else -> ({ showSettings() })
+            }
+            shortcuts.addView(homeShortcut(image,label,callback),
+                LinearLayout.LayoutParams(0,dp(81),1f).apply {
+                    marginStart=dp(if (index==0) 7 else 3)
+                    marginEnd=dp(if (index==3) 7 else 3)
+                })
+        }
+        content.addView(shortcuts,LinearLayout.LayoutParams(-1,dp(84)).apply { topMargin=dp(6) })
+        val footer=ImageView(this).apply {
+            setImageResource(R.drawable.home_footer)
+            scaleType=ImageView.ScaleType.FIT_XY
+            contentDescription="Créer, classer, partager, revivre — Les Lapibreizh toujours avec vous"
+        }
+        content.addView(footer,LinearLayout.LayoutParams(-1,dp(96),1f).apply {
+            topMargin=dp(6)
+        })
+        scroller.addView(content,FrameLayout.LayoutParams(-1,-2))
+        screen.addView(scroller,LinearLayout.LayoutParams(-1,-1))
         setContentView(screen)
+        // Cover and cards have natural dimensions; only the illustrated footer grows on tall phones.
     }
 
     private fun navigate(next: Route) {
@@ -286,6 +356,7 @@ class MainActivity : AppCompatActivity() {
             "voyage" in key -> R.drawable.tile_voyages_video
             "bricol" in key -> R.drawable.tile_bricolage_video
             "sport" in key -> R.drawable.tile_sport_video
+            "épisode" in key || "episode" in key -> R.drawable.tile_episodes_video
             "acad" in key -> R.drawable.tile_academie
             "couleur" in key || "fiche" in key -> R.drawable.tile_couleurs
             "personnage" in key -> R.drawable.tile_personnages
@@ -306,69 +377,150 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** An actual category browser: media counts are computed from MediaStore, never baked into artwork. */
+    private fun displayCategoryName(name: String, video: Boolean): String = when {
+        name == "Sans catégorie" -> if (video) "Autres" else "À classer"
+        name == "Académie" -> "Académie des Lapibreizh"
+        name == "Sport" -> if (video) "Section sportive" else "Fiches sportives"
+        name == "Restaurant" -> "Restaurant des Lapibreizh"
+        name == "Voyages" -> "Voyages de Carnot"
+        name == "Épisodes" -> "Épisodes des Lapibreizh"
+        else -> name
+    }
+
+    private fun videoCategories(): List<String> {
+        val planned=listOf("Épisodes", "Fiches vertes", "Fiches bleues", "Fiches orange",
+            "Fiches rouges", "Fiches violettes", "Fiches bonus", "Cueillette",
+            "Restaurant", "Voyages", "Bricolage", "Sport")
+        return (planned + savedCategories().filter { it !in planned }).distinct()
+    }
+
+    /** Actual categories and MediaStore counts. References never supply fictitious counts. */
     private fun showCategoryDashboard(target: Route) {
         route=target
-        dashboardVisible = true
-        categoryFilter = null
-        albumFilter = null
+        dashboardVisible=true
+        if(target!=Route.VIDEOS && sortMode==6) sortMode=0
+        categoryFilter=null
+        albumFilter=null
         selected.clear()
-        generation++
-        val request=generation
-        val screen=root()
+        val request=++generation
+        val video=target==Route.VIDEOS
+        val screen=root().apply { setPadding(dp(4),dp(2),dp(4),dp(2)) }
+        val scrolling=ScrollView(this).apply { isFillViewport=false }
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        content.addView(action("‹ Retour à l’accueil") { showHome() })
-        content.addView(hero(if (target==Route.VIDEOS) R.drawable.hero_videos else R.drawable.hero_images, 110))
-        content.addView(heading(if (target==Route.VIDEOS) "MES MONTAGES VIDÉO" else "MES IMAGES",19f))
-        content.addView(action("▧ Ouvrir toute la galerie") { showGallery(target) },
-            LinearLayout.LayoutParams(-1,dp(51)).apply { bottomMargin=dp(6) })
-        val status=note("Chargement des catégories et du nombre réel de médias…")
+        content.addView(action("‹ Retour") { showHome() },LinearLayout.LayoutParams(dp(95),dp(42)))
+        content.addView(hero(if(video) R.drawable.hero_videos else R.drawable.hero_images,122))
+        val search=EditText(this).apply {
+            hint=if(video) "Rechercher une vidéo…" else "Rechercher une image…"
+            setSingleLine(true); textSize=15f; setTextColor(cream)
+            setHintTextColor(0xFFAAAAAA.toInt())
+            setBackground(shape(Color.rgb(20,20,20),gold,12))
+            setPadding(dp(13),0,dp(10),0)
+        }
+        val searchRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        searchRow.addView(search,LinearLayout.LayoutParams(0,dp(45),1f))
+        searchRow.addView(action("☷ Filtres") { showGallery(target) },LinearLayout.LayoutParams(dp(95),dp(45)).apply { marginStart=dp(5) })
+        content.addView(searchRow,LinearLayout.LayoutParams(-1,dp(47)).apply { topMargin=dp(4) })
+        val status=note("Chargement de la médiathèque…")
         content.addView(status)
-        val gallery=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        content.addView(gallery)
-        content.addView(action("+ Gérer et créer mes catégories") { showSettings() },
-            LinearLayout.LayoutParams(-1,dp(51)).apply { topMargin=dp(8) })
-        screen.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1,0,1f))
+        val cards=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        content.addView(cards)
+        content.addView(action("▧ Ouvrir la galerie complète") { showGallery(target) },
+            LinearLayout.LayoutParams(-1,dp(44)).apply { topMargin=dp(7) })
+        content.addView(action("+ Créer et gérer mes catégories") { showSettings() },
+            LinearLayout.LayoutParams(-1,dp(44)).apply { topMargin=dp(4) })
+        scrolling.addView(content)
+        screen.addView(scrolling,LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(navBar(target))
         setContentView(screen)
         io.execute {
             val items=queryMedia(target)
             runOnUiThread {
-                if (generation != request || route != target) return@runOnUiThread
+                if(request!=generation || route!=target || !dashboardVisible) return@runOnUiThread
                 galleryItems=items
-                status.text="${items.size} média(s) accessibles • catégories de l’application"
-                val categories=savedCategories()+"Sans catégorie"
-                val cols=if (resources.configuration.screenWidthDp >= 600) 3 else 2
-                categories.chunked(cols).forEach { line ->
-                    val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-                    line.forEach { name ->
-                        val count=items.count { if(name=="Sans catégorie") getCategory(it).isEmpty() else getCategory(it)==name }
-                        val tile=LinearLayout(this).apply {
-                            orientation=LinearLayout.VERTICAL
-                            setBackground(shape(Color.rgb(27,24,20),gold,12))
-                            val visual=ImageView(this@MainActivity).apply {
-                                setImageResource(categoryArtwork(name,target==Route.VIDEOS))
-                                scaleType=ImageView.ScaleType.CENTER_CROP
-                                contentDescription="Illustration $name"
-                            }
-                            addView(visual,LinearLayout.LayoutParams(-1,dp(85)))
-                            addView(heading(name,14f))
-                            addView(note("$count média(s) ›"))
-                            setOnClickListener {
-                                categoryFilter=if(name=="Sans catégorie") "" else name
-                                selected.clear();searchQuery="";screensOnly=false;duplicatesOnly=false
-                                visibleLimit=120
-                                loadGallery()
-                            }
-                            isClickable=true;isFocusable=true
+                status.text="${items.size} ${if(video) "vidéo(s)" else "image(s)"} accessibles · choix d’une catégorie"
+                val counts=items.groupingBy { getCategory(it) }.eachCount()
+                val curatedVideos=setOf("Épisodes","Fiches vertes","Fiches bleues","Fiches orange",
+                    "Fiches rouges","Fiches violettes","Fiches bonus","Cueillette",
+                    "Restaurant","Voyages","Bricolage","Sport")
+                val videoNames=videoCategories().toSet()
+                val names=if(video) videoCategories().filter { it in curatedVideos || (counts[it] ?: 0)>0 } +
+                    "Sans catégorie" else savedCategories()+"Sans catégorie"
+                val cols=if(resources.configuration.screenWidthDp < 350) 2 else 3
+                val width=(resources.displayMetrics.widthPixels - dp(22) - dp(cols*7))/cols
+                val cardHeight=width+dp(12)
+                val allCards=mutableListOf<Pair<String,LinearLayout>>()
+                names.distinct().forEach { name ->
+                    val count=if(video && name=="Sans catégorie")
+                        items.count { getCategory(it) !in videoNames }
+                    else counts[if(name=="Sans catégorie") "" else name] ?: 0
+                    val title=displayCategoryName(name,video)
+                    val card=FrameLayout(this@MainActivity).apply {
+                        setBackground(shape(Color.rgb(22,18,14),gold,11))
+                        clipToOutline=true
+                        val picture=ImageView(this@MainActivity).apply {
+                            setImageResource(if(name=="Sans catégorie") R.drawable.tile_aclasser
+                                else categoryArtwork(name,video))
+                            scaleType=ImageView.ScaleType.CENTER_CROP
+                            contentDescription="Illustration $title"
                         }
-                        row.addView(tile,LinearLayout.LayoutParams(0,dp(155),1f).apply {
-                            marginStart=dp(3);marginEnd=dp(3);topMargin=dp(5)
+                        addView(picture,FrameLayout.LayoutParams(-1,-1))
+                        val text=TextView(this@MainActivity).apply {
+                            this.text="$title\n$count ${if(video) "vidéo(s)" else "image(s)"}"
+                            textSize=12f
+                            maxLines=3
+                            gravity=Gravity.BOTTOM or Gravity.START
+                            setTextColor(Color.WHITE)
+                            setShadowLayer(4f,1f,1f,Color.BLACK)
+                            setPadding(dp(6),dp(3),dp(3),dp(7))
+                            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                                intArrayOf(Color.TRANSPARENT,0xE3000000.toInt())).apply { cornerRadius=dp(10).toFloat() }
+                        }
+                        addView(text,FrameLayout.LayoutParams(-1,dp(69),Gravity.BOTTOM))
+                        setOnClickListener {
+                            categoryFilter=if(name=="Sans catégorie") (if(video) "__VIDEO_OTHER__" else "") else name
+                            selected.clear();searchQuery="";screensOnly=false;duplicatesOnly=false
+                            visibleLimit=120
+                            loadGallery()
+                        }
+                        isClickable=true; isFocusable=true
+                        contentDescription="$title, $count éléments"
+                    }
+                    val rowHolder=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.VERTICAL }
+                    rowHolder.addView(card,LinearLayout.LayoutParams(-1,cardHeight))
+                    allCards.add(name to rowHolder)
+                }
+                fun renderCategoryCards(term: String) {
+                    cards.removeAllViews()
+                    val found=allCards.filter { (name,_) ->
+                        term.isEmpty() || displayCategoryName(name,video).lowercase().contains(term)
+                    }
+                    if(found.isEmpty()) {
+                        cards.addView(note("Aucune catégorie ne correspond à cette recherche."))
+                    }
+                    found.chunked(cols).forEach { group ->
+                        val row=LinearLayout(this@MainActivity).apply { orientation=LinearLayout.HORIZONTAL }
+                        group.forEach { (_,tile) ->
+                            (tile.parent as? ViewGroup)?.removeView(tile)
+                            row.addView(tile,LinearLayout.LayoutParams(0,cardHeight,1f).apply {
+                                marginStart=dp(3);marginEnd=dp(3)
+                            })
+                        }
+                        repeat(cols-group.size) {
+                            row.addView(View(this@MainActivity),LinearLayout.LayoutParams(0,1,1f))
+                        }
+                        cards.addView(row,LinearLayout.LayoutParams(-1,cardHeight).apply {
+                            bottomMargin=dp(6)
                         })
                     }
-                    if(line.size<cols) repeat(cols-line.size) { row.addView(View(this),LinearLayout.LayoutParams(0,dp(155),1f)) }
-                    gallery.addView(row)
                 }
+                renderCategoryCards("")
+                search.addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?,start:Int,count:Int,after:Int) {}
+                    override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) {
+                        renderCategoryCards(s?.toString()?.trim()?.lowercase() ?: "")
+                    }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
             }
         }
     }
@@ -384,6 +536,7 @@ class MainActivity : AppCompatActivity() {
         duplicatesOnly = false
         duplicateKeys = emptySet()
         visibleLimit = 120
+        if(next!=Route.VIDEOS && sortMode==6) sortMode=0
         loadGallery()
     }
 
@@ -397,15 +550,17 @@ class MainActivity : AppCompatActivity() {
             Route.FAVORITES -> "MES FAVORIS"
             else -> "À CLASSER"
         }
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val toolbar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         toolbar.addView(action("‹ Retour") {
-            if (route==Route.IMAGES || route==Route.VIDEOS) showCategoryDashboard(route)
+            if(route==Route.IMAGES || route==Route.VIDEOS) showCategoryDashboard(route)
             else showHome()
-        }, LinearLayout.LayoutParams(dp(100), dp(48)))
-        toolbar.addView(heading(title, 18f), LinearLayout.LayoutParams(0, dp(48), 1f))
+        },LinearLayout.LayoutParams(dp(93),dp(44)))
+        toolbar.addView(heading(title,17f),LinearLayout.LayoutParams(0,dp(44),1f))
         layout.addView(toolbar)
-        layout.addView(hero(if (route==Route.VIDEOS) R.drawable.hero_videos else R.drawable.hero_images, 101))
-        if (categoryFilter != null) layout.addView(heading(if(categoryFilter=="") "Sans catégorie" else categoryFilter!!, 16f))
+        layout.addView(hero(if(route==Route.VIDEOS) R.drawable.hero_videos else R.drawable.hero_images,99))
+        if(categoryFilter!=null) layout.addView(heading(
+            if(categoryFilter=="") "À classer" else if(categoryFilter=="__VIDEO_OTHER__") "Autres"
+            else displayCategoryName(categoryFilter!!,route==Route.VIDEOS),16f))
         val info = note("Chargement des médias…")
         selectionInfo = info
         layout.addView(info)
@@ -432,7 +587,18 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
-        layout.addView(search, LinearLayout.LayoutParams(-1, dp(45)))
+        layout.addView(search, LinearLayout.LayoutParams(-1,dp(43)))
+        val sizes=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL }
+        sizes.addView(note("Vignettes :"),LinearLayout.LayoutParams(0,dp(37),1f))
+        listOf("Petites" to 4,"Moyennes" to 3,"Grandes" to 2).forEach { (name,columns) ->
+            val button=action(name) {
+                if(route==Route.VIDEOS) videoColumns=columns else imageColumns=columns
+                grid?.numColumns=columns
+                galleryAdapter?.notifyDataSetChanged()
+            }
+            sizes.addView(button,LinearLayout.LayoutParams(0,dp(37),1f))
+        }
+        layout.addView(sizes,LinearLayout.LayoutParams(-1,dp(38)))
         val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val screenButton = action("Captures") { }
         screenButton.setOnClickListener {
@@ -464,7 +630,7 @@ class MainActivity : AppCompatActivity() {
         selectionActions = actionScroller
         layout.addView(actionScroller, LinearLayout.LayoutParams(-1, dp(51)))
         val g = GridView(this).apply {
-            numColumns = 3
+            numColumns = if(route==Route.VIDEOS) videoColumns else imageColumns
             horizontalSpacing = dp(5)
             verticalSpacing = dp(5)
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
@@ -484,9 +650,16 @@ class MainActivity : AppCompatActivity() {
                     setBackgroundColor(this@MainActivity.background)
                     tag = media.key
                 }
-                frame.addView(image, FrameLayout.LayoutParams(-1, dp(122)))
+                val columns=if(route==Route.VIDEOS) videoColumns else imageColumns
+                val imageHeight=maxOf(dp(76),(resources.displayMetrics.widthPixels-dp(27))/columns)
+                frame.layoutParams=AbsListView.LayoutParams(-1,imageHeight)
+                frame.addView(image,FrameLayout.LayoutParams(-1,-1))
                 val caption = TextView(this@MainActivity).apply {
-                    text = (if (media.mime.startsWith("video/")) "▶ " else "") + media.title
+                    val duration=if(media.mime.startsWith("video/") && media.duration>0) {
+                        val total=media.duration/1000
+                        "▶ %02d:%02d ".format(total/60,total%60)
+                    } else if(media.mime.startsWith("video/")) "▶ " else ""
+                    text=duration+media.title
                     textSize = 10f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
@@ -567,7 +740,8 @@ class MainActivity : AppCompatActivity() {
             val collection = if (images) MediaStore.Images.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             val columns = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME,
                 MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.SIZE,
-                MediaStore.MediaColumns.DATE_ADDED, "bucket_display_name")
+                MediaStore.MediaColumns.DATE_ADDED, "bucket_display_name") +
+                (if(images) emptyArray<String>() else arrayOf(MediaStore.Video.VideoColumns.DURATION))
             try {
                 contentResolver.query(collection, columns, null, null,
                     "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
@@ -577,12 +751,13 @@ class MainActivity : AppCompatActivity() {
                     val sizeIx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                     val dateIx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
                     val albumIx = c.getColumnIndexOrThrow("bucket_display_name")
+                    val durationIx=if(images) -1 else c.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
                     while (c.moveToNext()) {
                         val id = c.getLong(idIx)
                         val mime = c.getString(mimeIx) ?: (if (images) "image/*" else "video/*")
                         result.add(Media(id, android.content.ContentUris.withAppendedId(collection, id), mime,
                             c.getString(titleIx) ?: "Sans titre", c.getString(albumIx) ?: "Autres",
-                            c.getLong(dateIx), c.getLong(sizeIx)))
+                            c.getLong(dateIx), c.getLong(sizeIx), if(durationIx>=0) c.getLong(durationIx) else 0L))
                     }
                 }
             } catch (_: SecurityException) { /* Media permissions can be changed in Settings. */ }
@@ -607,7 +782,8 @@ class MainActivity : AppCompatActivity() {
     private fun updateItems() {
         val filtered = galleryItems.filter { media ->
             (albumFilter == null || media.album == albumFilter) &&
-                (categoryFilter == null || getCategory(media) == categoryFilter) &&
+                (categoryFilter == null || (categoryFilter == "__VIDEO_OTHER__" &&
+                    getCategory(media) !in videoCategories()) || getCategory(media) == categoryFilter) &&
                 (route != Route.UNSORTED || getCategory(media).isEmpty()) &&
                 (route != Route.FAVORITES || prefs.getBoolean("fav_${media.key}", false)) &&
                 (searchQuery.isEmpty() || media.title.lowercase().contains(searchQuery) ||
@@ -621,6 +797,7 @@ class MainActivity : AppCompatActivity() {
             2 -> filtered.sortedBy { it.title.lowercase() }
             3 -> filtered.sortedByDescending { it.title.lowercase() }
             4 -> filtered.sortedByDescending { it.size }
+            6 -> filtered.sortedByDescending { it.duration }
             else -> filtered.sortedWith(compareBy<Media> { it.mime }.thenBy { it.title.lowercase() })
         }
         galleryAdapter?.notifyDataSetChanged()
@@ -642,10 +819,12 @@ class MainActivity : AppCompatActivity() {
         refreshInfo()
     }
 
-    private fun sortShortLabel() = arrayOf("Date ↓ ▾", "Date ↑ ▾", "Nom A-Z ▾", "Nom Z-A ▾", "Taille ↓ ▾", "Type ▾")[sortMode]
+    private fun sortShortLabel() = arrayOf("Date ↓ ▾", "Date ↑ ▾", "Nom A-Z ▾", "Nom Z-A ▾", "Taille ↓ ▾", "Type ▾", "Durée ↓ ▾")[sortMode]
 
     private fun chooseSort() {
-        val labels=arrayOf("Date : plus récent d’abord", "Date : plus ancien d’abord",
+        val labels= if(route==Route.VIDEOS) arrayOf("Date : plus récent d’abord", "Date : plus ancien d’abord",
+            "Nom : A → Z", "Nom : Z → A", "Taille : plus grand d’abord", "Type de fichier puis nom",
+            "Durée : la plus longue d’abord") else arrayOf("Date : plus récent d’abord", "Date : plus ancien d’abord",
             "Nom : A → Z", "Nom : Z → A", "Taille : plus grand d’abord", "Type de fichier puis nom")
         AlertDialog.Builder(this).setTitle("Trier les médias")
             .setSingleChoiceItems(labels,sortMode) { dialog,choice ->
@@ -703,12 +882,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun classifySelected() {
-        val cats = savedCategories()
+        val cats = if(route==Route.VIDEOS) videoCategories() else savedCategories()
         val choices = (listOf("Sans catégorie") + cats).toTypedArray()
         AlertDialog.Builder(this).setTitle("Classer ${selected.size} élément(s)")
             .setItems(choices) { _, index ->
                 val category = if (index == 0) "" else cats[index - 1]
                 val edit = prefs.edit()
+                if(category.isNotEmpty() && category !in savedCategories()) {
+                    edit.putString("category_names",(savedCategories()+category).joinToString("\u001f"))
+                }
                 selected.forEach { edit.putString("media_$it", category) }
                 edit.apply()
                 selected.clear()
@@ -1126,7 +1308,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(heading("Sécurité des fichiers", 19f))
         layout.addView(note("Copier crée de nouveaux fichiers dans le dossier choisi sans toucher aux originaux. Corbeille agit sur les vrais fichiers après deux validations : aucune suppression définitive ni effacement sécurisé dans cette version."))
         layout.addView(note("Doublons : détection SHA-256 des photos strictement identiques de 50 Mo maximum ; aucune suppression automatique. Les photos visuellement similaires ne sont pas repérées."))
-        layout.addView(note("Version 0.4 · Appui long sur une miniature pour sélectionner."))
+        layout.addView(note("Version 0.4.1 · Appui long sur une miniature pour sélectionner."))
         val screen=root()
         screen.addView(ScrollView(this).apply { addView(layout) },LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(navBar(Route.SETTINGS))
