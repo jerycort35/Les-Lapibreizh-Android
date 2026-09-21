@@ -1,0 +1,21 @@
+LES LAPIBREIZH — LA MÉDIATHÈQUE — V0.5.1
+
+Cette version regroupe les corrections demandées avant reprise des tests :
+- miniatures images/vidéos adaptées aux tailles Petite/Moyenne/Grande ;
+- cartes de catégories vidéo sans recadrage destructif ;
+- boutons noir/or harmonisés ;
+- Paramètres réorganisés ;
+- Import intelligent LOCAL fondé sur albums/noms de fichiers (aucune prétention de reconnaissance IA du contenu) ;
+- vraie page Modifier une catégorie ;
+- page Doublon détecté pour une paire confirmée par SHA-256 ;
+- doublons exacts photos + vidéos ;
+- page de progression puis bilan pour les copies ;
+- page de confirmation avant la corbeille Android ;
+- JSON catégories/classements/favoris conservé.
+
+IMPORTANT : la corbeille Android n'est pas un effacement sécurisé. Les fichiers sont généralement récupérables jusqu'à expiration.
+L'import intelligent ne déplace pas les originaux : il modifie uniquement le classement interne après validation.
+
+Version : 0.5.1 / versionCode 7
+Application ID inchangé : fr.leslapibreizh.mediatheque
+Workflow : release signée, artifact Les-Lapibreizh-V051-SIGNED.

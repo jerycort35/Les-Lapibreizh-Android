@@ -32,7 +32,7 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 
 /**
- * V0.5.0 : correction de la composition visuelle à partir des maquettes validées, tri et favoris,
+ * V0.5.1 : correction de la composition visuelle à partir des maquettes validées, tri et favoris,
  * recherche de photos strictement identiques et mise à la corbeille avec accord système.
  * Une copie n'efface JAMAIS l'original ; une mise à la corbeille exige deux confirmations.
  */
@@ -130,10 +130,17 @@ class MainActivity : AppCompatActivity() {
         this.text = text
         textSize = 12.5f
         isAllCaps = false
+        typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
+        letterSpacing = 0.015f
         setTextColor(cream)
         backgroundTintList = null
-        setBackground(shape())
-        setPadding(dp(5), dp(3), dp(5), dp(3))
+        background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.rgb(48,39,25), Color.rgb(18,15,11))).apply {
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(1), gold)
+        }
+        elevation = dp(2).toFloat()
+        setPadding(dp(8), dp(3), dp(8), dp(3))
         minHeight = dp(43)
         setOnClickListener { onClick() }
     }
@@ -460,7 +467,8 @@ class MainActivity : AppCompatActivity() {
                         val picture=ImageView(this@MainActivity).apply {
                             setImageResource(if(name=="Sans catégorie") R.drawable.tile_aclasser
                                 else categoryArtwork(name,video))
-                            scaleType=ImageView.ScaleType.CENTER_CROP
+                            scaleType=ImageView.ScaleType.FIT_CENTER
+                            setBackgroundColor(Color.BLACK)
                             contentDescription="Illustration $title"
                         }
                         addView(picture,FrameLayout.LayoutParams(-1,-1))
@@ -677,12 +685,20 @@ class MainActivity : AppCompatActivity() {
                     }
                     frame.addView(tick, FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP or Gravity.END))
                 }
-                val cached = bitmapCache.get(media.key)
+                val columns = if (route == Route.VIDEOS) videoColumns else imageColumns
+                val cellPx = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1))
+                val requestedPx = when (columns) {
+                    2 -> (cellPx * 1.8f).toInt().coerceAtLeast(720)
+                    3 -> (cellPx * 1.5f).toInt().coerceAtLeast(480)
+                    else -> (cellPx * 1.25f).toInt().coerceAtLeast(320)
+                }
+                val cacheKey = "${media.key}:$requestedPx"
+                val cached = bitmapCache.get(cacheKey)
                 if (cached != null) image.setImageBitmap(cached)
                 else io.execute {
-                    val bitmap = try { thumbnail(media) } catch (_: Exception) { null }
+                    val bitmap = try { thumbnail(media, requestedPx) } catch (_: Exception) { null }
                     if (bitmap != null) {
-                        bitmapCache.put(media.key, bitmap)
+                        bitmapCache.put(cacheKey, bitmap)
                         image.post { if (image.tag == media.key) image.setImageBitmap(bitmap) }
                     }
                 }
@@ -766,8 +782,9 @@ class MainActivity : AppCompatActivity() {
         return if (target == Route.UNSORTED) result.filter { getCategory(it).isEmpty() } else result
     }
 
-    private fun thumbnail(media: Media): Bitmap? {
-        if (Build.VERSION.SDK_INT >= 29) return contentResolver.loadThumbnail(media.uri, Size(220, 220), null)
+    private fun thumbnail(media: Media, requestedPx: Int): Bitmap? {
+        val safe = requestedPx.coerceIn(220, 1080)
+        if (Build.VERSION.SDK_INT >= 29) return contentResolver.loadThumbnail(media.uri, Size(safe, safe), null)
         return if (media.mime.startsWith("video/")) {
             @Suppress("DEPRECATION")
             MediaStore.Video.Thumbnails.getThumbnail(contentResolver, media.id,
@@ -973,14 +990,18 @@ class MainActivity : AppCompatActivity() {
             updateItems()
             return
         }
-        if (galleryItems.isEmpty()) { toast("Ouvre d'abord une galerie contenant des photos."); return }
+        if (galleryItems.isEmpty()) { toast("Ouvre d'abord une galerie contenant des médias."); return }
         val request = generation
-        val images = galleryItems.filter { it.mime.startsWith("image/") && it.size in 1..50_000_000L }
-        toast("Recherche des photos strictement identiques en cours…")
+        val candidatesMedia = galleryItems.filter { media ->
+            if (media.mime.startsWith("video/")) media.size in 1..500_000_000L
+            else media.size in 1..80_000_000L
+        }
+        toast("Recherche des médias strictement identiques en cours…")
         duplicateButton?.isEnabled = false
         io.execute {
             val matches = mutableSetOf<String>()
-            val candidates = images.groupBy { it.size }.values.filter { it.size > 1 }
+            var comparisonPair: List<String>? = null
+            val candidates = candidatesMedia.groupBy { it.size }.values.filter { it.size > 1 }
             for (bucket in candidates) {
                 if (Thread.currentThread().isInterrupted) break
                 val byHash = mutableMapOf<String, MutableList<Media>>()
@@ -989,6 +1010,7 @@ class MainActivity : AppCompatActivity() {
                     if (signature != null) byHash.getOrPut(signature) { mutableListOf() }.add(media)
                 }
                 byHash.values.filter { it.size > 1 }.forEach { group ->
+                    if (comparisonPair == null) comparisonPair = group.take(2).map { it.key }
                     group.forEach { matches.add(it.key) }
                 }
             }
@@ -1000,7 +1022,12 @@ class MainActivity : AppCompatActivity() {
                 duplicateButton?.text = "Doublons ✓"
                 clearSelectionForFilter()
                 updateItems()
-                toast("${matches.size} photos dans des groupes de doublons exacts (50 Mo maximum par photo). Aucun fichier supprimé.")
+                toast("${matches.size} média(s) dans des groupes de doublons exacts. Aucun fichier supprimé.")
+                val pairKeys = comparisonPair
+                if (pairKeys != null && pairKeys.size == 2) {
+                    val exact = pairKeys.mapNotNull { key -> galleryItems.firstOrNull { it.key == key } }
+                    if (exact.size == 2) showDuplicateComparison(exact)
+                }
             }
         }
     }
@@ -1038,60 +1065,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyToFolder(tree: Uri, files: List<Media>) {
-        var copied = 0
-        var failed = 0
-        val folder = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
-        files.forEachIndexed { index, media ->
-            var created: Uri? = null
-            try {
-                val safeName = media.title.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").takeLast(85)
-                val name = "Lapibreizh_${System.currentTimeMillis()}_${index + 1}_${safeName.ifBlank { "media" }}"
-                created = DocumentsContract.createDocument(contentResolver, folder, media.mime, name)
-                    ?: throw IOException("Impossible de créer le document")
-                val target = created
-                val bytes = (contentResolver.openInputStream(media.uri) ?: throw IOException("Source illisible")).use { input ->
-                    (contentResolver.openOutputStream(target, "w") ?: throw IOException("Destination non accessible")).use { output ->
-                        input.copyTo(output, 64 * 1024)
-                    }
-                }
-                if (media.size > 0 && bytes != media.size) throw IOException("Taille copiée incorrecte")
-                copied++
-            } catch (_: Exception) {
-                failed++
-                if (created != null) try { DocumentsContract.deleteDocument(contentResolver, created) } catch (_: Exception) {}
-            }
-        }
         runOnUiThread {
-            AlertDialog.Builder(this).setTitle("Copie terminée")
-                .setMessage("$copied copie(s) effectuée(s), $failed échec(s). Les originaux n'ont pas été déplacés ou effacés. Vérifie les fichiers dans le dossier choisi.")
-                .setPositiveButton("Compris", null).show()
+            val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER_HORIZONTAL; setPadding(dp(14),dp(22),dp(14),dp(18)); setBackgroundColor(black) }
+            content.addView(heading("COPIE EN COURS",23f))
+            val status=note("Préparation de ${files.size} média(s)…")
+            content.addView(status)
+            val progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=files.size.coerceAtLeast(1); progress=0 }
+            content.addView(progress,LinearLayout.LayoutParams(-1,dp(28)).apply { topMargin=dp(12);bottomMargin=dp(12) })
+            content.addView(note("Les originaux restent à leur emplacement pendant toute l'opération."))
+            setContentView(content)
+
+            io.execute {
+                var copied=0; var failed=0
+                val folder=DocumentsContract.buildDocumentUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree))
+                files.forEachIndexed { index,media ->
+                    var created:Uri?=null
+                    try {
+                        val safeName=media.title.replace(Regex("[^\\p{L}\\p{N}._ -]"),"_").takeLast(85)
+                        val name="Lapibreizh_${System.currentTimeMillis()}_${index+1}_${safeName.ifBlank { "media" }}"
+                        created=DocumentsContract.createDocument(contentResolver,folder,media.mime,name) ?: throw IOException("Création impossible")
+                        val target=created
+                        val bytes=(contentResolver.openInputStream(media.uri) ?: throw IOException("Source illisible")).use { input ->
+                            (contentResolver.openOutputStream(target,"w") ?: throw IOException("Destination inaccessible")).use { output -> input.copyTo(output,64*1024) }
+                        }
+                        if(media.size>0 && bytes!=media.size) throw IOException("Taille incorrecte")
+                        copied++
+                    } catch(_:Exception) {
+                        failed++; if(created!=null) try { DocumentsContract.deleteDocument(contentResolver,created) } catch(_:Exception) {}
+                    }
+                    val done=index+1
+                    runOnUiThread { progress.progress=done; status.text="$done / ${files.size} · ${media.title.take(34)}" }
+                }
+                runOnUiThread { showOperationResult("COPIE TERMINÉE",copied,failed,files.size) }
+            }
         }
     }
 
     private fun trashSelected() {
         val files = galleryItems.filter { selected.contains(it.key) }
         if (files.isEmpty()) return
-        if (Build.VERSION.SDK_INT < 30) {
-            toast("Corbeille disponible sur Android 11 ou supérieur uniquement.")
-            return
-        }
-        if (files.size > 100) {
-            toast("Par sécurité, la corbeille est limitée à 100 médias par opération.")
-            return
-        }
-        AlertDialog.Builder(this).setTitle("Mettre ${files.size} médias à la corbeille ?")
-            .setMessage("Cette opération agit sur les VRAIS fichiers du téléphone, pas seulement sur leur catégorie. Android demandera une seconde confirmation. Tu pourras généralement récupérer les fichiers depuis la corbeille avant son expiration. Ce n'est PAS un effacement sécurisé.")
-            .setNegativeButton("Conserver", null)
-            .setPositiveButton("Continuer vers Android") { _, _ ->
-                pendingTrash = files
-                try {
-                    val intent = MediaStore.createTrashRequest(contentResolver, files.map { it.uri }, true)
-                    startIntentSenderForResult(intent.intentSender, trashRequest, null, 0, 0, 0)
-                } catch (_: Exception) {
-                    pendingTrash = emptyList()
-                    toast("La demande de mise à la corbeille a échoué : aucun fichier modifié par l'application.")
-                }
-            }.show()
+        if (Build.VERSION.SDK_INT < 30) { toast("Corbeille disponible sur Android 11 ou supérieur uniquement."); return }
+        if (files.size > 100) { toast("Par sécurité, la corbeille est limitée à 100 médias par opération."); return }
+        showTrashConfirmation(files)
     }
 
     private fun exportCategories() {
@@ -1224,8 +1239,7 @@ class MainActivity : AppCompatActivity() {
                 val batch = pendingCopy
                 pendingCopy = emptyList()
                 if (batch.isNotEmpty()) {
-                    toast("Copie de ${batch.size} média(s) en cours. Garde l'application ouverte.")
-                    io.execute { copyToFolder(uri, batch) }
+                    copyToFolder(uri, batch)
                 }
             }
         }
@@ -1272,45 +1286,269 @@ class MainActivity : AppCompatActivity() {
             }.show()
     }
 
+
+    /** V0.5.1 — Import intelligent local: suggestions fondées uniquement sur le nom d'album/fichier. */
+    private fun smartSuggestion(media: Media): String? {
+        val hay = (media.album + " " + media.title).lowercase()
+        return savedCategories().firstOrNull { category ->
+            val words = category.lowercase().replace("é","e").replace("è","e")
+                .split(Regex("[^a-z0-9]+"))
+                .filter { it.length >= 4 && it !in setOf("fiches","lapibreizh","lapins") }
+            words.any { word -> hay.replace("é","e").replace("è","e").contains(word) }
+        }
+    }
+
+    private fun showSmartImport() {
+        route = Route.SETTINGS
+        dashboardVisible = false
+        val screen = root().apply { setPadding(dp(7),dp(5),dp(7),dp(5)) }
+        val content = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        content.addView(action("‹ Paramètres") { showSettings() }, LinearLayout.LayoutParams(dp(115),dp(43)))
+        content.addView(heading("IMPORT INTELLIGENT",22f))
+        content.addView(note("Analyse locale des albums et noms de fichiers. Aucun média n'est envoyé sur Internet et les originaux ne sont jamais modifiés."))
+        val status=note("Analyse des albums…")
+        content.addView(status)
+        val list=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        content.addView(list)
+        val scroll=ScrollView(this).apply { addView(content) }
+        screen.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        screen.addView(navBar(Route.SETTINGS))
+        setContentView(screen)
+        val request=++generation
+        io.execute {
+            val media=queryMedia(Route.UNSORTED)
+            val albums=media.groupBy { it.album.ifBlank { "Autres" } }.toList().sortedByDescending { it.second.size }
+            runOnUiThread {
+                if(request!=generation) return@runOnUiThread
+                status.text="${albums.size} album(s) analysé(s) · ${media.size} média(s)"
+                albums.take(80).forEach { (album,items) ->
+                    val suggestions=items.mapNotNull { smartSuggestion(it) }.groupingBy { it }.eachCount()
+                    val best=suggestions.maxByOrNull { it.value }?.key
+                    val card=LinearLayout(this).apply {
+                        orientation=LinearLayout.VERTICAL
+                        setPadding(dp(9),dp(7),dp(9),dp(7))
+                        background=shape(Color.rgb(24,20,15),Color.rgb(91,70,39),12)
+                        addView(TextView(this@MainActivity).apply {
+                            text="$album  ·  ${items.size} média(s)"; textSize=15f; setTextColor(gold)
+                            typeface=android.graphics.Typeface.create("serif",android.graphics.Typeface.BOLD)
+                        })
+                        addView(note(if(best==null) "Aucune suggestion fiable — aucune action automatique."
+                            else "Suggestion locale : $best"))
+                        if(best!=null) addView(action("Classer cet album dans « $best »") {
+                            AlertDialog.Builder(this@MainActivity).setTitle("Classer ${items.size} média(s) ?")
+                                .setMessage("Seul le classement interne sera modifié. Les fichiers originaux resteront exactement à leur place.")
+                                .setNegativeButton("Annuler",null)
+                                .setPositiveButton("Classer") { _,_ ->
+                                    val e=prefs.edit(); items.forEach { e.putString("media_${it.key}",best) }; e.apply()
+                                    toast("${items.size} média(s) classé(s) dans $best."); showSmartImport()
+                                }.show()
+                        },LinearLayout.LayoutParams(-1,dp(46)))
+                    }
+                    list.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
+                }
+            }
+        }
+    }
+
+    /** Éditeur de catégorie en vraie page, sans toucher aux fichiers du téléphone. */
+    private fun showCategoryEditor(category: String) {
+        route=Route.SETTINGS; dashboardVisible=false
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(9),dp(7),dp(9),dp(12)) }
+        content.addView(action("‹ Paramètres") { showSettings() },LinearLayout.LayoutParams(dp(115),dp(43)))
+        content.addView(heading("MODIFIER LA CATÉGORIE",21f))
+        val count=prefs.all.count { (k,v) -> k.startsWith("media_") && v==category }
+        content.addView(note("$count média(s) actuellement classé(s) dans cette catégorie."))
+        val field=EditText(this).apply {
+            setText(category); setSingleLine(true); textSize=17f; setTextColor(cream)
+            setBackground(shape(Color.rgb(20,20,20),gold,12)); setPadding(dp(12),0,dp(12),0)
+        }
+        content.addView(field,LinearLayout.LayoutParams(-1,dp(52)))
+        content.addView(action("Enregistrer le nouveau nom") {
+            val name=field.text.toString().trim().replace("\u001f","")
+            if(name.isEmpty() || name.length>40 || savedCategories().any { it.equals(name,true) && it!=category }) {
+                toast("Nom vide, trop long ou déjà utilisé.")
+            } else {
+                val e=prefs.edit().putString("category_names",savedCategories().map { if(it==category) name else it }.joinToString("\u001f"))
+                prefs.all.forEach { (k,v) -> if(k.startsWith("media_") && v==category) e.putString(k,name) }; e.apply()
+                toast("Catégorie renommée."); showSettings()
+            }
+        },LinearLayout.LayoutParams(-1,dp(50)).apply { topMargin=dp(8) })
+        content.addView(heading("Suppression de la catégorie",17f))
+        content.addView(note("Option recommandée : supprimer uniquement la catégorie. Les photos et vidéos restent sur le téléphone et redeviennent « À classer »."))
+        content.addView(action("Supprimer la catégorie — garder les fichiers") {
+            AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
+                .setMessage("$count classement(s) seront retirés. Aucune photo et aucune vidéo ne sera supprimée.")
+                .setNegativeButton("Annuler",null).setPositiveButton("Supprimer la catégorie") { _,_ ->
+                    val e=prefs.edit().putString("category_names",savedCategories().filter { it!=category }.joinToString("\u001f"))
+                    prefs.all.forEach { (k,v) -> if(k.startsWith("media_") && v==category) e.putString(k,"") }; e.apply(); showSettings()
+                }.show()
+        },LinearLayout.LayoutParams(-1,dp(52)))
+        val screen=root().apply { setPadding(0,0,0,0) }
+        screen.addView(ScrollView(this).apply { addView(content) },LinearLayout.LayoutParams(-1,0,1f)); screen.addView(navBar(Route.SETTINGS)); setContentView(screen)
+    }
+
+    /** Comparaison avant toute action : les doublons affichés ici sont identiques au SHA-256. */
+    private fun showDuplicateComparison(items: List<Media>) {
+        if(items.size<2) { toast("Aucune paire de doublons exacts à comparer."); return }
+        val a=items[0]; val b=items[1]
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(9),dp(7),dp(9),dp(10)) }
+        content.addView(action("‹ Retour") { loadGallery() },LinearLayout.LayoutParams(dp(100),dp(43)))
+        content.addView(heading("DOUBLON DÉTECTÉ",22f))
+        content.addView(note("Comparaison de deux fichiers strictement identiques selon leur empreinte SHA-256. Aucune suppression automatique."))
+        val pair=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        listOf(a,b).forEach { media ->
+            val box=LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; background=shape(Color.rgb(22,18,14),gold,11); setPadding(dp(5),dp(5),dp(5),dp(5))
+                val iv=ImageView(this@MainActivity).apply { scaleType=ImageView.ScaleType.FIT_CENTER; tag=media.key; setBackgroundColor(Color.BLACK) }
+                addView(iv,LinearLayout.LayoutParams(-1,dp(220)))
+                addView(note("${media.title}\n${media.album}\n${media.size/1024} Ko"))
+                io.execute { val bm=try { thumbnail(media,720) } catch(_:Exception){null}; if(bm!=null) iv.post { if(iv.tag==media.key) iv.setImageBitmap(bm) } }
+            }
+            pair.addView(box,LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(3);marginEnd=dp(3) })
+        }
+        content.addView(pair)
+        content.addView(action("Sélectionner le second pour la corbeille") {
+            selected.clear(); selected.add(b.key); loadGallery(); toast("Le doublon est sélectionné. Utilise Corbeille si tu veux réellement le retirer.")
+        },LinearLayout.LayoutParams(-1,dp(52)).apply { topMargin=dp(9) })
+        content.addView(action("Conserver les deux") { selected.clear(); loadGallery() },LinearLayout.LayoutParams(-1,dp(48)))
+        setContentView(ScrollView(this).apply { addView(content) })
+    }
+
+    private fun showOperationResult(title: String, copied: Int, failed: Int, total: Int) {
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER_HORIZONTAL; setPadding(dp(14),dp(18),dp(14),dp(18)); setBackgroundColor(black) }
+        content.addView(heading(title,23f))
+        content.addView(note("Opération terminée"))
+        val summary=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=shape(Color.rgb(24,20,15),gold,13); setPadding(dp(12),dp(12),dp(12),dp(12)) }
+        summary.addView(note("Réussis : $copied\nÉchecs : $failed\nTotal : $total\n\nLes originaux n'ont pas été déplacés ni effacés."))
+        content.addView(summary,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10);bottomMargin=dp(10) })
+        content.addView(action("Retour à la médiathèque") { loadGallery() },LinearLayout.LayoutParams(-1,dp(52)))
+        setContentView(ScrollView(this).apply { addView(content) })
+    }
+
+    /** Écran de confirmation visuel avant la vraie demande de corbeille Android. */
+    private fun showTrashConfirmation(files: List<Media>) {
+        val previousRoute=route
+        val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(10),dp(12)); setBackgroundColor(black) }
+        content.addView(action("‹ Annuler") { route=previousRoute; loadGallery() },LinearLayout.LayoutParams(dp(100),dp(43)))
+        content.addView(heading("METTRE À LA CORBEILLE ?",21f))
+        val bytes=files.sumOf { it.size }
+        content.addView(note("${files.size} média(s) · ${bytes/1024/1024} Mo\nLes vrais fichiers seront envoyés vers la corbeille Android après confirmation du système."))
+        val previews=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
+        files.take(3).forEach { media ->
+            val iv=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; tag=media.key; setBackgroundColor(Color.BLACK) }
+            previews.addView(iv,LinearLayout.LayoutParams(0,dp(125),1f).apply { marginStart=dp(3);marginEnd=dp(3) })
+            io.execute { val bm=try { thumbnail(media,480) } catch(_:Exception){null}; if(bm!=null) iv.post { if(iv.tag==media.key) iv.setImageBitmap(bm) } }
+        }
+        content.addView(previews,LinearLayout.LayoutParams(-1,dp(130)))
+        content.addView(note("Les éléments restent généralement récupérables depuis la corbeille jusqu'à son expiration. Ce n'est PAS un effacement sécurisé."))
+        content.addView(action("Continuer vers la corbeille Android") {
+            if(Build.VERSION.SDK_INT<30) { toast("Corbeille disponible sur Android 11 ou supérieur uniquement."); route=previousRoute; loadGallery() }
+            else {
+                pendingTrash=files
+                try { val intent=MediaStore.createTrashRequest(contentResolver,files.map { it.uri },true); startIntentSenderForResult(intent.intentSender,trashRequest,null,0,0,0) }
+                catch(_:Exception){ pendingTrash=emptyList(); toast("La demande a échoué : aucun fichier modifié."); route=previousRoute; loadGallery() }
+            }
+        },LinearLayout.LayoutParams(-1,dp(55)).apply { topMargin=dp(8) })
+        setContentView(ScrollView(this).apply { addView(content) })
+    }
+
     private fun showSettings() {
         route = Route.SETTINGS
         dashboardVisible = false
         selected.clear()
-        val layout = root()
-        layout.addView(action("‹ Retour à l’accueil") { showHome() })
-        layout.addView(hero(R.drawable.hero_images, 110))
-        layout.addView(heading("PARAMÈTRES"))
-        layout.addView(note("Les catégories sont internes à l'application. Sauvegarde-les avant toute désinstallation : celle-ci peut effacer le classement."))
-        layout.addView(heading("Mes catégories", 19f))
-        savedCategories().forEach { category ->
-            layout.addView(action("✎ $category") { manageCategory(category) }, LinearLayout.LayoutParams(-1, dp(47)))
+
+        fun section(title: String, subtitle: String? = null): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            background = shape(Color.rgb(24,20,15), Color.rgb(91,70,39), 12)
+            addView(TextView(this@MainActivity).apply {
+                text = title; textSize = 17f; setTextColor(gold)
+                typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
+            })
+            if (subtitle != null) addView(TextView(this@MainActivity).apply {
+                text = subtitle; textSize = 11.5f; setTextColor(cream)
+                setPadding(0, dp(2), 0, dp(3))
+            })
         }
-        layout.addView(action("+ Ajouter une catégorie") {
+        fun toggle(label: String, key: String, default: Boolean): Switch = Switch(this).apply {
+            text = label; textSize = 13f; setTextColor(cream)
+            isChecked = prefs.getBoolean(key, default)
+            setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
+        }
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(12))
+            setBackgroundColor(black)
+        }
+        content.addView(action("‹ Retour") { showHome() }, LinearLayout.LayoutParams(dp(105), dp(43)))
+        content.addView(heading("PARAMÈTRES", 24f))
+        content.addView(note("Les Lapibreizh — La Médiathèque"))
+
+        val general = section("Général")
+        general.addView(note("Thème : Noir & Or Lapibreizh · Langue : Français"))
+        general.addView(toggle("Animations légères", "setting_animations", true))
+        general.addView(toggle("Vibrations lors des actions", "setting_vibrations", true))
+        content.addView(general, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val imports = section("Import des albums", "Analyse locale : aucun média n'est envoyé sur Internet.")
+        imports.addView(action("Import intelligent") { showSmartImport() }, LinearLayout.LayoutParams(-1,dp(50)))
+        imports.addView(action("Importer depuis la galerie") { navigate(Route.IMAGES) }, LinearLayout.LayoutParams(-1,dp(48)))
+        imports.addView(action("Voir les albums existants") {
+            if (hasPermission(Route.IMAGES)) { route=Route.IMAGES; showGallery(Route.IMAGES); chooseAlbum() }
+            else navigate(Route.IMAGES)
+        }, LinearLayout.LayoutParams(-1,dp(48)))
+        content.addView(imports, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val sorting = section("Tri automatique", "Réglages préparés pour le classement local de la médiathèque.")
+        sorting.addView(toggle("Utiliser les noms de fichiers", "setting_sort_filename", true))
+        sorting.addView(toggle("Utiliser les albums d'origine", "setting_sort_album", true))
+        content.addView(sorting, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val types = section("Types de fichiers")
+        types.addView(toggle("Images", "setting_type_images", true))
+        types.addView(toggle("Vidéos", "setting_type_videos", true))
+        content.addView(types, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val dup = section("Gestion des doublons", "Détection SHA-256 : fichiers strictement identiques, photos ET vidéos.")
+        dup.addView(note("Aucune suppression automatique. Vérifie toujours les fichiers avant la corbeille."))
+        content.addView(dup, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val cats = section("Mes catégories", "Touchez une catégorie pour la renommer ou la supprimer du classement.")
+        savedCategories().forEach { category ->
+            cats.addView(action("✎  $category") { showCategoryEditor(category) }, LinearLayout.LayoutParams(-1,dp(45)))
+        }
+        cats.addView(action("＋ Ajouter une catégorie") {
             val editText = EditText(this).apply {
-                hint = "Nom de la catégorie"
-                setTextColor(cream)
-                setHintTextColor(0xFFAAAAAA.toInt())
-                setSingleLine(true)
+                hint="Nom de la catégorie"; setTextColor(cream); setHintTextColor(0xFFAAAAAA.toInt()); setSingleLine(true)
             }
             AlertDialog.Builder(this).setTitle("Nouvelle catégorie").setView(editText)
                 .setPositiveButton("Ajouter") { _, _ ->
-                    val name = editText.text.toString().trim().replace("\u001f", "")
-                    if (name.isNotEmpty() && name.length <= 40 && !savedCategories().any { it.equals(name, true) }) {
-                        prefs.edit().putString("category_names", (savedCategories() + name).joinToString("\u001f")).apply()
-                        showSettings()
+                    val name=editText.text.toString().trim().replace("\u001f","")
+                    if(name.isNotEmpty() && name.length<=40 && !savedCategories().any { it.equals(name,true) }) {
+                        prefs.edit().putString("category_names",(savedCategories()+name).joinToString("\u001f")).apply(); showSettings()
                     } else toast("Nom vide, trop long ou déjà utilisé.")
-                }.setNegativeButton("Annuler", null).show()
-        }, LinearLayout.LayoutParams(-1, dp(51)))
-        layout.addView(heading("Sauvegarder ton classement", 19f))
-        layout.addView(action("Exporter la sauvegarde JSON") { exportCategories() }, LinearLayout.LayoutParams(-1, dp(54)))
-        layout.addView(action("Importer une sauvegarde JSON") { importCategories() }, LinearLayout.LayoutParams(-1, dp(54)))
-        layout.addView(note("Une sauvegarde contient tes catégories et les identifiants des médias, pas les photos. Réimportation conçue pour la même médiathèque : si Android change ses identifiants, certaines associations ne reviendront pas."))
-        layout.addView(heading("Sécurité des fichiers", 19f))
-        layout.addView(note("Copier crée de nouveaux fichiers dans le dossier choisi sans toucher aux originaux. Corbeille agit sur les vrais fichiers après deux validations : aucune suppression définitive ni effacement sécurisé dans cette version."))
-        layout.addView(note("Doublons : détection SHA-256 des photos strictement identiques de 50 Mo maximum ; aucune suppression automatique. Les photos visuellement similaires ne sont pas repérées."))
-        layout.addView(note("Version 0.5.0 · Appui long sur une miniature pour sélectionner."))
-        val screen=root()
-        screen.addView(ScrollView(this).apply { addView(layout) },LinearLayout.LayoutParams(-1,0,1f))
+                }.setNegativeButton("Annuler",null).show()
+        }, LinearLayout.LayoutParams(-1,dp(48)))
+        content.addView(cats, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val backup = section("Sauvegarde du classement", "Le JSON sauvegarde catégories, classements et favoris — jamais les photos elles-mêmes.")
+        backup.addView(action("Exporter la sauvegarde JSON") { exportCategories() }, LinearLayout.LayoutParams(-1,dp(48)))
+        backup.addView(action("Importer une sauvegarde JSON") { importCategories() }, LinearLayout.LayoutParams(-1,dp(48)))
+        content.addView(backup, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val storage = section("Stockage")
+        storage.addView(note("Les copies sont créées dans le dossier que tu choisis. Les originaux restent intacts."))
+        storage.addView(action("Ouvrir la médiathèque") { navigate(Route.IMAGES) }, LinearLayout.LayoutParams(-1,dp(48)))
+        content.addView(storage, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+
+        val other = section("Autres options")
+        other.addView(note("Version 0.5.1 · Grandes vignettes HD · doublons photos + vidéos"))
+        other.addView(note("Corbeille Android : récupérable avant expiration. Ce n'est pas un effacement sécurisé."))
+        content.addView(other)
+
+        val screen=root().apply { setPadding(0,0,0,0) }
+        screen.addView(ScrollView(this).apply { addView(content) },LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(navBar(Route.SETTINGS))
         setContentView(screen)
     }
