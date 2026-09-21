@@ -1,18 +1,6 @@
-LES LAPIBREIZH — V0.5.4
-============================
+LES LAPIBREIZH — PROJET ANDROID COMPLET V057
 
-CE ZIP CONTIENT LE VRAI CODE ANDROID, PAS UN SCRIPT DE PATCH.
+Copier TOUT le contenu de ce ZIP à la racine du dépôt GitHub.
+Le ZIP contient les fichiers racine Gradle, le workflow GitHub Actions, le dossier app complet, AndroidManifest.xml, les ressources HD et MainActivity.kt.
 
-À copier à la racine du dépôt Gitling en remplaçant les fichiers existants :
-- app/src/main/java/fr/leslapibreizh/mediatheque/MainActivity.kt
-- app/build.gradle.kts
-
-Menus intégrés dans l'application :
-- Paramètres noir & or
-- Import des albums
-- Modification des catégories
-- Déplacement / classement avec progression et résultat
-- Suppression avec récapitulatif et confirmation Android
-- Doublons SHA-256 avec 1 sur X, Précédent et Suivant
-
-Le tri automatique reste volontairement désactivé : il sera fait à la dernière étape.
+Ne copier aucun fichier séparément : remplacer/fusionner l'ensemble à la racine.
