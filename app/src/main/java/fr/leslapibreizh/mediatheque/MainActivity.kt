@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         textSize = 13f
         isAllCaps = false
         setTextColor(cream)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(background)
+        backgroundTintList = android.content.res.ColorStateList.valueOf(this@MainActivity.background)
         setOnClickListener { onClick() }
     }
 
@@ -231,7 +231,7 @@ class MainActivity : AppCompatActivity() {
                 val frame = FrameLayout(this@MainActivity)
                 val image = ImageView(this@MainActivity).apply {
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(background)
+                    setBackgroundColor(this@MainActivity.background)
                     tag = media.key
                 }
                 frame.addView(image, FrameLayout.LayoutParams(-1, dp(122)))
