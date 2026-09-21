@@ -2,23 +2,19 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-
 val privateKeyFile = System.getenv("LAPIBREIZH_KEYSTORE_PATH")
 val privateKeyPassword = System.getenv("LAPIBREIZH_KEYSTORE_PASSWORD")
 val hasPrivateSigning = !privateKeyFile.isNullOrBlank() && !privateKeyPassword.isNullOrBlank()
-
 android {
     namespace = "fr.leslapibreizh.mediatheque"
     compileSdk = 35
-
     defaultConfig {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.5.1"
+        versionCode = 10
+        versionName = "0.5.4"
     }
-
     signingConfigs {
         if (hasPrivateSigning) {
             create("lapibreizh") {
@@ -41,7 +37,6 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
-
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
