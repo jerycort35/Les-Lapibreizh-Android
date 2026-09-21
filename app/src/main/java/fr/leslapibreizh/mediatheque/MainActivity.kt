@@ -778,18 +778,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sha256(media: Media): String? = try {
-        val digest = MessageDigest.getInstance("SHA-256")
-        contentResolver.openInputStream(media.uri)?.use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val n = input.read(buffer)
-                if (n <= 0) break
-                digest.update(buffer, 0, n)
-            }
-        } ?: return null
-        digest.digest().joinToString("") { "%02x".format(it) }
-    } catch (_: Exception) { null }
+    private fun sha256(media: Media): String? {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            contentResolver.openInputStream(media.uri)?.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n <= 0) break
+                    digest.update(buffer, 0, n)
+                }
+            } ?: return null
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private fun showDuplicateComparison() {
         if (duplicatePairs.isEmpty()) { showSettings(); return }
@@ -804,7 +808,7 @@ class MainActivity : AppCompatActivity() {
         fun card(title: String, media: Media): LinearLayout = section(title).apply {
             val image = ImageView(this@MainActivity).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(background)
+                setBackgroundColor(this@MainActivity.background)
             }
             addView(image, LinearLayout.LayoutParams(-1, dp(170)))
             io.execute {

@@ -1,11 +1,18 @@
-LES LAPIBREIZH V0.5.5 — APPLICATION COMPLETE
+LES LAPIBREIZH — V0.5.4
+============================
 
-Ce ZIP est destiné à remplacer le CONTENU du dépôt Gitling Les-Lapibreizh-Android.
-Il contient déjà l'arborescence Android et le workflow GitHub au bon emplacement.
+CE ZIP CONTIENT LE VRAI CODE ANDROID, PAS UN SCRIPT DE PATCH.
 
-IMPORTANT :
-- Ne supprime pas le dossier .git de ton dépôt Gitling.
-- Extrais le ZIP puis copie TOUT son contenu à la racine Les-Lapibreizh-Android.
-- Accepte les remplacements.
-- Gitling : État > Stage all > Commit > Push.
-- Le workflow restaure lui-même les visuels HD originaux V0.5.3 avant compilation.
+À copier à la racine du dépôt Gitling en remplaçant les fichiers existants :
+- app/src/main/java/fr/leslapibreizh/mediatheque/MainActivity.kt
+- app/build.gradle.kts
+
+Menus intégrés dans l'application :
+- Paramètres noir & or
+- Import des albums
+- Modification des catégories
+- Déplacement / classement avec progression et résultat
+- Suppression avec récapitulatif et confirmation Android
+- Doublons SHA-256 avec 1 sur X, Précédent et Suivant
+
+Le tri automatique reste volontairement désactivé : il sera fait à la dernière étape.
