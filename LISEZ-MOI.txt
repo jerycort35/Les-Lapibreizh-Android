@@ -1,14 +1,11 @@
-LES LAPIBREIZH — V058 INTERFACE VALIDÉE
+LES LAPIBREIZH — V059 — 2 ÉCRANS VALIDÉS EXACTS
 
-Projet Android complet.
+Cette version utilise directement les deux maquettes validées comme rendu visuel :
+- Accueil : ui_home_exact.png
+- Médiathèque / Images : ui_media_exact.png
 
-V058 :
-- Page 1 Accueil réellement intégrée dans showHome().
-- Page 2 Médiathèque / Images réellement intégrée dans showMediaDashboard().
-- Navigation Images/Vidéos passe par la nouvelle page Médiathèque.
-- Retour depuis la grille vers la page Médiathèque.
-- Fonctions avancées existantes conservées : classement, suppression avec confirmation Android, partage, doublons SHA-256, paramètres.
-- Ressources visuelles HD conservées.
-- Tri automatique maintenu désactivé.
+Des zones tactiles transparentes sont superposées aux boutons de la maquette afin de conserver exactement l'apparence validée tout en ouvrant les fonctions existantes de l'application.
 
-Copier le CONTENU de ce ZIP à la racine du dépôt puis remplacer/fusionner les fichiers existants.
+Le moteur existant (MediaStore, galerie, classement, partage, doublons SHA-256, paramètres et confirmations Android) est conservé.
+
+Version Android : 0.5.9 (versionCode 13)

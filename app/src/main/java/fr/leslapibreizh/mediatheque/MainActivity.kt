@@ -159,110 +159,109 @@ class MainActivity : AppCompatActivity() {
         setOnClickListener { onClick() }
     }
 
+    /**
+     * Écrans validés : l'illustration complète est la référence visuelle.
+     * Les zones transparentes ci-dessous ne modifient jamais son rendu : elles
+     * rendent simplement les boutons de la maquette réellement interactifs.
+     */
+    private data class Hotspot(
+        val left: Float, val top: Float, val right: Float, val bottom: Float,
+        val description: String, val click: () -> Unit
+    )
+
+    private fun exactUiScreen(resId: Int, imageWidth: Int, imageHeight: Int, hotspots: List<Hotspot>) {
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.BLACK)
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val image = ImageView(this).apply {
+            setImageResource(resId)
+            scaleType = ImageView.ScaleType.FIT_XY
+            contentDescription = "Interface Les Lapibreizh"
+        }
+        frame.addView(image, FrameLayout.LayoutParams(-1, -1))
+        scroll.addView(frame, ScrollView.LayoutParams(-1, -2))
+        setContentView(scroll)
+
+        frame.post {
+            val w = frame.width.coerceAtLeast(1)
+            val h = (w.toFloat() * imageHeight / imageWidth).toInt()
+            frame.layoutParams = frame.layoutParams.apply { height = h }
+            image.layoutParams = FrameLayout.LayoutParams(-1, h)
+            hotspots.forEach { spot ->
+                val touch = View(this).apply {
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = spot.description
+                    setBackgroundColor(Color.TRANSPARENT)
+                    setOnClickListener { spot.click() }
+                }
+                val lp = FrameLayout.LayoutParams(
+                    ((spot.right - spot.left) * w).toInt().coerceAtLeast(1),
+                    ((spot.bottom - spot.top) * h).toInt().coerceAtLeast(1)
+                ).apply {
+                    leftMargin = (spot.left * w).toInt()
+                    topMargin = (spot.top * h).toInt()
+                }
+                frame.addView(touch, lp)
+            }
+        }
+    }
+
     private fun showHome() {
         route = Route.HOME
         selected.clear()
-        val screen = root().apply { setPadding(dp(8), dp(7), dp(8), dp(5)) }
-
-        screen.addView(hero(R.drawable.home_bretagne, 205), LinearLayout.LayoutParams(-1, dp(205)))
-        screen.addView(heading("Les Lapibreizh", 29f).apply { setPadding(2, dp(7), 2, 0) })
-        screen.addView(heading("LA MÉDIATHÈQUE", 20f).apply { setPadding(2, 0, 2, 0) })
-        screen.addView(note("Images • Vidéos • Créations").apply { setPadding(2, 1, 2, 0) })
-        screen.addView(TextView(this).apply {
-            text = "Notre passion en images"; textSize = 17f; setTextColor(cream); gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create("cursive", android.graphics.Typeface.ITALIC)
-            setPadding(2, dp(2), 2, dp(10))
-        })
-
-        val univers = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        univers.addView(panel("IMAGES", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { showMediaDashboard(Route.IMAGES) },
-            LinearLayout.LayoutParams(0, dp(126), 1f).apply { marginEnd = dp(4) })
-        univers.addView(panel("MONTAGES VIDÉO\n— EDITS —", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { showMediaDashboard(Route.VIDEOS) },
-            LinearLayout.LayoutParams(0, dp(126), 1f).apply { marginStart = dp(4) })
-        screen.addView(univers)
-
-        val labels = listOf(
-            "⌕  Retrouver\nune image/vidéo" to { showMediaDashboard(Route.IMAGES) },
-            "☷  À classer" to { navigate(Route.UNSORTED) },
-            "↥  Renvoyer\ndans la galerie" to { showMediaDashboard(Route.IMAGES) },
-            "⚙  Paramètres" to { showSettings() }
+        exactUiScreen(
+            R.drawable.ui_home_exact, 906, 1736,
+            listOf(
+                Hotspot(0.015f, 0.430f, 0.490f, 0.665f, "Images") { showMediaDashboard(Route.IMAGES) },
+                Hotspot(0.505f, 0.430f, 0.985f, 0.665f, "Montages vidéo") { showMediaDashboard(Route.VIDEOS) },
+                Hotspot(0.015f, 0.675f, 0.245f, 0.795f, "Retrouver une image ou vidéo") { showMediaDashboard(Route.IMAGES) },
+                Hotspot(0.255f, 0.675f, 0.490f, 0.795f, "À classer") { navigate(Route.UNSORTED) },
+                Hotspot(0.505f, 0.675f, 0.740f, 0.795f, "Renvoyer dans la galerie") { showMediaDashboard(Route.IMAGES) },
+                Hotspot(0.750f, 0.675f, 0.985f, 0.795f, "Paramètres") { showSettings() }
+            )
         )
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        labels.forEach { (label, click) ->
-            row.addView(panel(label, "", click), LinearLayout.LayoutParams(0, dp(86), 1f).apply {
-                marginStart = dp(2); marginEnd = dp(2)
-            })
-        }
-        screen.addView(row, LinearLayout.LayoutParams(-1, dp(86)).apply { topMargin = dp(8) })
-        screen.addView(hero(R.drawable.home_lapibreizh, 150), LinearLayout.LayoutParams(-1, dp(150)).apply { topMargin = dp(8) })
-        screen.addView(note("Créer   •   Classer   •   Partager   •   Revivre"))
-        screen.addView(heading("LES LAPIBREIZH TOUJOURS AVEC VOUS", 14f).apply { setPadding(2, 0, 2, dp(5)) })
-        screen.addView(navBar(Route.HOME))
-        setContentView(ScrollView(this).apply { addView(screen) })
     }
 
-    /** Écran 2 validé : véritable entrée Médiathèque avant la grille technique. */
     private fun showMediaDashboard(kind: Route) {
         route = kind
         selected.clear()
-        val screen = root().apply { setPadding(dp(8), dp(7), dp(8), dp(5)) }
-        screen.addView(hero(R.drawable.home_bretagne, 180), LinearLayout.LayoutParams(-1, dp(180)))
-        screen.addView(heading("Les Lapibreizh — MÉDIATHÈQUE", 22f).apply { setPadding(2, dp(6), 2, 0) })
-        screen.addView(note("Images • Vidéos • Créations").apply { setPadding(2, 0, 2, 0) })
-        screen.addView(TextView(this).apply {
-            text = if (kind == Route.IMAGES) "La Bretagne en images !" else "Nos histoires en mouvement !"
-            textSize = 17f; setTextColor(cream); gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create("cursive", android.graphics.Typeface.ITALIC)
-            setPadding(2, 0, 2, dp(8))
-        })
+        // La maquette validée est la page Médiathèque. Les actions gardent le moteur existant derrière.
+        exactUiScreen(
+            R.drawable.ui_media_exact, 941, 1672,
+            listOf(
+                Hotspot(0.020f, 0.202f, 0.760f, 0.240f, "Rechercher") { navigate(kind) },
+                Hotspot(0.770f, 0.202f, 0.985f, 0.240f, "Filtres") { navigate(kind) },
+                Hotspot(0.020f, 0.245f, 0.495f, 0.418f, "Images") { navigate(Route.IMAGES) },
+                Hotspot(0.505f, 0.245f, 0.985f, 0.418f, "Montages vidéo") { navigate(Route.VIDEOS) },
 
-        val search = action("⌕  Rechercher une image, une vidéo…     Filtres") { navigate(kind) }
-        screen.addView(search, LinearLayout.LayoutParams(-1, dp(52)))
+                Hotspot(0.020f, 0.425f, 0.250f, 0.535f, "Académie des Lapibreizh") { navigate(Route.IMAGES) },
+                Hotspot(0.260f, 0.425f, 0.495f, 0.535f, "Fiches couleurs") { navigate(Route.IMAGES) },
+                Hotspot(0.505f, 0.425f, 0.740f, 0.535f, "Fiches sportives") { navigate(Route.IMAGES) },
+                Hotspot(0.750f, 0.425f, 0.985f, 0.535f, "Bricolage") { navigate(Route.IMAGES) },
+                Hotspot(0.020f, 0.540f, 0.250f, 0.650f, "Restaurant des Lapibreizh") { navigate(Route.IMAGES) },
+                Hotspot(0.260f, 0.540f, 0.495f, 0.650f, "Voyages de Carnot") { navigate(Route.IMAGES) },
+                Hotspot(0.505f, 0.540f, 0.740f, 0.650f, "Épisodes des Lapibreizh") { navigate(Route.IMAGES) },
+                Hotspot(0.750f, 0.540f, 0.985f, 0.650f, "Personnages") { navigate(Route.IMAGES) },
+                Hotspot(0.020f, 0.655f, 0.250f, 0.765f, "Lapins réels") { navigate(Route.IMAGES) },
+                Hotspot(0.260f, 0.655f, 0.495f, 0.765f, "À classer") { navigate(Route.UNSORTED) },
+                Hotspot(0.505f, 0.655f, 0.985f, 0.765f, "Chaque image raconte une histoire") { navigate(kind) },
 
-        val univers = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        univers.addView(panel("IMAGES", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { navigate(Route.IMAGES) },
-            LinearLayout.LayoutParams(0, dp(112), 1f).apply { marginEnd = dp(4) })
-        univers.addView(panel("MONTAGES VIDÉO", "CRÉER • ÉDITER\nTRIER • PARTAGER • ORGANISER") { navigate(Route.VIDEOS) },
-            LinearLayout.LayoutParams(0, dp(112), 1f).apply { marginStart = dp(4) })
-        screen.addView(univers, LinearLayout.LayoutParams(-1, dp(112)).apply { topMargin = dp(7) })
+                Hotspot(0.020f, 0.775f, 0.250f, 0.850f, "Retrouver") { navigate(kind) },
+                Hotspot(0.260f, 0.775f, 0.495f, 0.850f, "Trier") { navigate(kind) },
+                Hotspot(0.505f, 0.775f, 0.740f, 0.850f, "Renvoyer dans la galerie") { navigate(kind) },
+                Hotspot(0.750f, 0.775f, 0.985f, 0.850f, "Paramètres") { showSettings() },
 
-        screen.addView(heading("NOS UNIVERS", 17f).apply { gravity = Gravity.LEFT; setPadding(dp(4), dp(12), 0, dp(6)) })
-        val cats = listOf(
-            "🎓  Académie des Lapibreizh" to "248 images",
-            "🔵  Fiches couleurs" to "86 images",
-            "🏅  Fiches sportives" to "73 images",
-            "🛠  Bricolage" to "64 images",
-            "♨  Restaurant des Lapibreizh" to "92 images",
-            "🧭  Voyages de Carnot" to "58 images",
-            "🎬  Épisodes des Lapibreizh" to "76 images",
-            "♛  Personnages" to "118 images",
-            "🐇  Lapins réels" to "96 images",
-            "☷  À classer" to "34 images"
+                Hotspot(0.000f, 0.855f, 0.200f, 0.940f, "Accueil") { showHome() },
+                Hotspot(0.200f, 0.855f, 0.400f, 0.940f, "Images") { navigate(Route.IMAGES) },
+                Hotspot(0.400f, 0.855f, 0.600f, 0.940f, "Vidéos") { navigate(Route.VIDEOS) },
+                Hotspot(0.600f, 0.855f, 0.800f, 0.940f, "Favoris") { navigate(Route.UNSORTED) },
+                Hotspot(0.800f, 0.855f, 1.000f, 0.940f, "Paramètres") { showSettings() }
+            )
         )
-        cats.chunked(2).forEach { pair ->
-            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            pair.forEach { (name, count) ->
-                line.addView(panel(name, count) { navigate(if (name.contains("À classer")) Route.UNSORTED else Route.IMAGES) },
-                    LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
-            }
-            screen.addView(line, LinearLayout.LayoutParams(-1, dp(88)).apply { bottomMargin = dp(6) })
-        }
-
-        screen.addView(panel("Chaque image raconte une histoire…", "Les Lapibreizh toujours avec vous") { navigate(kind) },
-            LinearLayout.LayoutParams(-1, dp(82)).apply { topMargin = dp(2) })
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf(
-            "⌕\nRetrouver" to { navigate(kind) },
-            "⇅\nTrier" to { navigate(kind) },
-            "↥\nGalerie" to { navigate(kind) },
-            "⚙\nParamètres" to { showSettings() }
-        ).forEach { (label, click) ->
-            actions.addView(panel(label, "", click), LinearLayout.LayoutParams(0, dp(75), 1f).apply { marginStart=dp(2); marginEnd=dp(2) })
-        }
-        screen.addView(actions, LinearLayout.LayoutParams(-1, dp(75)).apply { topMargin = dp(7) })
-        screen.addView(navBar(kind))
-        screen.addView(note("Les Lapibreizh — Plus que des photos, une vie ensemble").apply { setPadding(2, dp(7), 2, dp(4)) })
-        setContentView(ScrollView(this).apply { addView(screen) })
     }
 
     private fun navigate(next: Route) {
