@@ -1,5 +1,9 @@
-LES LAPIBREIZH — PAQUET MOBILE VERIFIE
+Les Lapibreizh 0.2 — PROJET SOURCE, pas encore un APK validé.
 
-Le dossier github-workflows contient build-apk.yml volontairement sans dossier cache .github.
-Lors du transfert vers GitHub, build-apk.yml devra être placé dans .github/workflows/.
-Tous les autres fichiers conservent leur arborescence Android.
+1. Garder la version 0.1 installée tant que la compilation de 0.2 n'est pas verte.
+2. Depuis Gitling, récupérer d'abord les changements GitHub (Pull) avant de remplacer les fichiers.
+3. Copier le contenu de ce ZIP à la racine du dépôt local, enregistrer et envoyer avec Gitling.
+4. Dans GitHub Actions, vérifier la compilation et télécharger l'artefact.
+5. Tester ouverture, affichage, partage et catégorie sur quelques médias non sensibles.
+
+Ce lot ne supprime ni ne déplace aucun média.
