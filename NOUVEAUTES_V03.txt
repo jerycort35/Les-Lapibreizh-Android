@@ -1,0 +1,11 @@
+LES LAPIBREIZH — MÉDIATHÈQUE 0.3 (CODE SOURCE)
+
+Nouveautés : recherche dans les titres/albums, filtre Captures, sélection des 120 affichés ou de tous les résultats, gestion du nom/suppression logique des catégories, export/import JSON du classement, détection SHA-256 des doublons photo exacts (images <= 50 Mo), copie multiple vers un dossier choisi sans effacer l’original, mise à la corbeille Android 11+ avec double confirmation.
+
+IMPORTANT : cette archive est du CODE SOURCE, pas un APK compilé. Le workflow GitHub Actions génère l'APK après commit/push. Une compilation réussie ne vaut pas test du fonctionnement sur ton appareil.
+
+La signature DEBUG GitHub Actions peut changer à chaque compilation. Android peut refuser la mise à jour de la 0.2. Si tu dois désinstaller la 0.2, son classement interne (dont les 42 screenshots) sera perdu : la 0.2 ne propose pas encore d'export. Tes photos originales, elles, restent intactes. Ne désinstalle pas sans en tenir compte. Dès la 0.3, exporte ton classement AVANT chaque future désinstallation et réimporte-le après. Pour de vraies mises à jour sans désinstallation, il faudra configurer ultérieurement une signature stable et privée.
+
+Aucun effacement sécurisé ni déplacement réel automatique. Copier + vérifier la copie + mise à la corbeille après confirmation sont des actions séparées.
+
+Installation source : extraire l'archive dans la racine du dépôt Gitling Les-Lapibreizh-Android en remplaçant les fichiers du même nom (pas de sous-dossier supplémentaire), puis Stage all, Commit et Push. Vérifier GitHub Actions vert avant de télécharger/install l'APK.

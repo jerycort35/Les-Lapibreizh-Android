@@ -4,10 +4,17 @@ import android.Manifest
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
+import android.provider.DocumentsContract
+import android.text.Editable
+import android.text.TextWatcher
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.security.MessageDigest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -24,8 +31,9 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 
 /**
- * V0.2 : lecture seule des photos et videos MediaStore, classement logique dans
- * les preferences (aucun deplacement ou suppression des originaux).
+ * V0.3 : gestion des catégories, sauvegarde, sélection massive, copie sûre,
+ * recherche de photos strictement identiques et mise à la corbeille avec accord système.
+ * Une copie n'efface JAMAIS l'original ; une mise à la corbeille exige deux confirmations.
  */
 class MainActivity : AppCompatActivity() {
     private val gold = Color.rgb(207, 174, 104)
@@ -47,9 +55,20 @@ class MainActivity : AppCompatActivity() {
     private var visibleLimit = 120
     private var grid: GridView? = null
     private var galleryAdapter: BaseAdapter? = null
-    private var selectionActions: LinearLayout? = null
+    private var selectionActions: View? = null
     private var selectionInfo: TextView? = null
+    private var duplicateButton: Button? = null
     private var generation = 0
+    private var searchQuery = ""
+    private var screensOnly = false
+    private var duplicatesOnly = false
+    private var duplicateKeys = emptySet<String>()
+    private var pendingCopy = emptyList<Media>()
+    private var pendingTrash = emptyList<Media>()
+    private val backupExportRequest = 301
+    private val backupImportRequest = 302
+    private val copyFolderRequest = 303
+    private val trashRequest = 304
 
     private enum class Route { HOME, IMAGES, VIDEOS, UNSORTED, SETTINGS }
     private data class Media(
@@ -125,7 +144,7 @@ class MainActivity : AppCompatActivity() {
             val b = action(title) { navigate(target) }
             layout.addView(b, LinearLayout.LayoutParams(-1, dp(66)).apply { topMargin = dp(9) })
         }
-        layout.addView(note("Version 0.2 · consultation sans suppression ni déplacement"))
+        layout.addView(note("Version 0.3 · classement, sauvegarde, copies et corbeille avec confirmation"))
         setContentView(layout)
     }
 
@@ -177,6 +196,10 @@ class MainActivity : AppCompatActivity() {
         selected.clear()
         albumFilter = null
         categoryFilter = null
+        searchQuery = ""
+        screensOnly = false
+        duplicatesOnly = false
+        duplicateKeys = emptySet()
         visibleLimit = 120
         loadGallery()
     }
@@ -201,18 +224,56 @@ class MainActivity : AppCompatActivity() {
         filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
         filters.addView(action("Trier") {
             sortedNewestFirst = !sortedNewestFirst
+            clearSelectionForFilter()
             updateItems()
         }, LinearLayout.LayoutParams(0, dp(50), 1f))
         layout.addView(filters)
-        selectionActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
-        }.also { actions ->
-            actions.addView(action("Classer") { classifySelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Partager") { shareSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Annuler") { selected.clear(); updateSelection() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            layout.addView(actions)
+        val search = EditText(this).apply {
+            hint = "Rechercher un nom, un album…"
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(cream)
+            setHintTextColor(0xFFAAAAAA.toInt())
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    searchQuery = s?.toString()?.trim()?.lowercase() ?: ""
+                    clearSelectionForFilter()
+                    updateItems()
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
         }
+        layout.addView(search, LinearLayout.LayoutParams(-1, dp(45)))
+        val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val screenButton = action("Captures") { }
+        screenButton.setOnClickListener {
+            screensOnly = !screensOnly
+            screenButton.text = if (screensOnly) "Captures ✓" else "Captures"
+            clearSelectionForFilter()
+            updateItems()
+        }
+        tools.addView(screenButton, LinearLayout.LayoutParams(0, dp(45), 1f))
+        duplicateButton = action("Doublons") { scanExactDuplicates() }
+        tools.addView(duplicateButton, LinearLayout.LayoutParams(0, dp(45), 1f))
+        tools.addView(action("Sélection") { chooseSelection() }, LinearLayout.LayoutParams(0, dp(45), 1f))
+        layout.addView(tools)
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(
+            "Classer" to { classifySelected() },
+            "Copier" to { copySelected() },
+            "Corbeille" to { trashSelected() },
+            "Partager" to { shareSelected() },
+            "Annuler" to { selected.clear(); updateSelection() }
+        ).forEach { (name, operation) ->
+            actions.addView(action(name, operation), LinearLayout.LayoutParams(dp(108), dp(49)))
+        }
+        val actionScroller = HorizontalScrollView(this).apply {
+            visibility = View.GONE
+            addView(actions)
+        }
+        selectionActions = actionScroller
+        layout.addView(actionScroller, LinearLayout.LayoutParams(-1, dp(51)))
         val g = GridView(this).apply {
             numColumns = 3
             horizontalSpacing = dp(5)
@@ -355,12 +416,17 @@ class MainActivity : AppCompatActivity() {
         val filtered = galleryItems.filter { media ->
             (albumFilter == null || media.album == albumFilter) &&
                 (categoryFilter == null || getCategory(media) == categoryFilter) &&
-                (route != Route.UNSORTED || getCategory(media).isEmpty())
+                (route != Route.UNSORTED || getCategory(media).isEmpty()) &&
+                (searchQuery.isEmpty() || media.title.lowercase().contains(searchQuery) ||
+                    media.album.lowercase().contains(searchQuery)) &&
+                (!screensOnly || isScreenshot(media)) &&
+                (!duplicatesOnly || duplicateKeys.contains(media.key))
         }
         shownItems = if (sortedNewestFirst) filtered.sortedByDescending { it.date }
             else filtered.sortedBy { it.title.lowercase() }
         galleryAdapter?.notifyDataSetChanged()
         refreshInfo()
+        // Keep the labels truthful even when filters are combined.
         (grid?.parent as? LinearLayout)?.findViewWithTag<Button>("more")?.visibility =
             if (shownItems.size > visibleLimit) View.VISIBLE else View.GONE
     }
@@ -381,7 +447,11 @@ class MainActivity : AppCompatActivity() {
         val albums = galleryItems.map { it.album }.distinct().sorted()
         val choices = (listOf("Tous les albums") + albums).toTypedArray()
         AlertDialog.Builder(this).setTitle("Albums du téléphone")
-            .setItems(choices) { _, index -> albumFilter = if (index == 0) null else albums[index - 1]; updateItems() }
+            .setItems(choices) { _, index ->
+                albumFilter = if (index == 0) null else albums[index - 1]
+                clearSelectionForFilter()
+                updateItems()
+            }
             .show()
     }
 
@@ -390,6 +460,7 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("Classement Lapibreizh")
             .setItems(categories.toTypedArray()) { _, index ->
                 categoryFilter = when (index) { 0 -> null; 1 -> ""; else -> categories[index] }
+                clearSelectionForFilter()
                 updateItems()
             }.show()
     }
@@ -432,6 +503,10 @@ class MainActivity : AppCompatActivity() {
     private fun shareSelected() {
         val media = galleryItems.filter { selected.contains(it.key) }
         if (media.isEmpty()) return
+        if (media.size > 200) {
+            toast("Pour partager, sélectionne au maximum 200 médias à la fois.")
+            return
+        }
         val intent = Intent(if (media.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE)
         intent.type = when {
             media.all { it.mime.startsWith("image/") } -> "image/*"
@@ -449,18 +524,344 @@ class MainActivity : AppCompatActivity() {
         catch (_: Exception) { Toast.makeText(this, "Partage indisponible", Toast.LENGTH_SHORT).show() }
     }
 
+    private fun clearSelectionForFilter() {
+        if (selected.isNotEmpty()) { selected.clear(); updateSelection() }
+    }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    private fun isScreenshot(media: Media): Boolean {
+        val location = (media.album + " " + media.title).lowercase()
+        return listOf("screenshot", "screen shot", "capture", "screencap").any { location.contains(it) }
+    }
+
+    private fun chooseSelection() {
+        if (shownItems.isEmpty()) { toast("Aucun média à sélectionner."); return }
+        val visibleCount = minOf(shownItems.size, visibleLimit)
+        AlertDialog.Builder(this).setTitle("Sélection multiple")
+            .setItems(arrayOf("Sélectionner les $visibleCount affichés", "Sélectionner les ${shownItems.size} résultats filtrés", "Tout désélectionner")) { _, choice ->
+                when (choice) {
+                    0 -> { selected.addAll(shownItems.take(visibleCount).map { it.key }); updateSelection() }
+                    1 -> AlertDialog.Builder(this).setTitle("Sélectionner ${shownItems.size} médias ?")
+                        .setMessage("La sélection concerne uniquement les résultats du filtre actuel. Toute mise à la corbeille demandera une confirmation séparée.")
+                        .setNegativeButton("Annuler", null)
+                        .setPositiveButton("Sélectionner") { _, _ ->
+                            selected.addAll(shownItems.map { it.key }); updateSelection()
+                        }.show()
+                    else -> { selected.clear(); updateSelection() }
+                }
+            }.show()
+    }
+
+    /** Only exact byte-for-byte IMAGE matches, identified by size then SHA-256. */
+    private fun scanExactDuplicates() {
+        if (duplicatesOnly) {
+            duplicatesOnly = false
+            duplicateButton?.text = "Doublons"
+            clearSelectionForFilter()
+            updateItems()
+            return
+        }
+        if (galleryItems.isEmpty()) { toast("Ouvre d'abord une galerie contenant des photos."); return }
+        val request = generation
+        val images = galleryItems.filter { it.mime.startsWith("image/") && it.size in 1..50_000_000L }
+        toast("Recherche des photos strictement identiques en cours…")
+        duplicateButton?.isEnabled = false
+        io.execute {
+            val matches = mutableSetOf<String>()
+            val candidates = images.groupBy { it.size }.values.filter { it.size > 1 }
+            for (bucket in candidates) {
+                if (Thread.currentThread().isInterrupted) break
+                val byHash = mutableMapOf<String, MutableList<Media>>()
+                for (media in bucket) {
+                    val signature = try { sha256(media.uri) } catch (_: Exception) { null }
+                    if (signature != null) byHash.getOrPut(signature) { mutableListOf() }.add(media)
+                }
+                byHash.values.filter { it.size > 1 }.forEach { group ->
+                    group.forEach { matches.add(it.key) }
+                }
+            }
+            runOnUiThread {
+                if (request != generation || route == Route.HOME || route == Route.SETTINGS) return@runOnUiThread
+                duplicateButton?.isEnabled = true
+                duplicateKeys = matches
+                duplicatesOnly = true
+                duplicateButton?.text = "Doublons ✓"
+                clearSelectionForFilter()
+                updateItems()
+                toast("${matches.size} photos dans des groupes de doublons exacts (50 Mo maximum par photo). Aucun fichier supprimé.")
+            }
+        }
+    }
+
+    private fun sha256(uri: Uri): String? {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val stream = contentResolver.openInputStream(uri) ?: return null
+        stream.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val size = input.read(buffer)
+                if (size < 0) break
+                if (Thread.currentThread().isInterrupted) throw IOException("Interrompu")
+                if (size > 0) digest.update(buffer, 0, size)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun copySelected() {
+        val files = galleryItems.filter { selected.contains(it.key) }
+        if (files.isEmpty()) return
+        if (files.size > 250) { toast("Copie limitée à 250 médias par opération."); return }
+        AlertDialog.Builder(this).setTitle("Copier ${files.size} médias")
+            .setMessage("Choisis ensuite un dossier de destination. Les fichiers d'origine ne seront NI déplacés NI effacés. Vérifie tes copies avant toute mise à la corbeille.")
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Choisir le dossier") { _, _ ->
+                pendingCopy = files
+                try {
+                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    }, copyFolderRequest)
+                } catch (_: Exception) { pendingCopy = emptyList(); toast("Sélecteur de dossier indisponible.") }
+            }.show()
+    }
+
+    private fun copyToFolder(tree: Uri, files: List<Media>) {
+        var copied = 0
+        var failed = 0
+        val folder = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        files.forEachIndexed { index, media ->
+            var created: Uri? = null
+            try {
+                val safeName = media.title.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").takeLast(85)
+                val name = "Lapibreizh_${System.currentTimeMillis()}_${index + 1}_${safeName.ifBlank { "media" }}"
+                created = DocumentsContract.createDocument(contentResolver, folder, media.mime, name)
+                    ?: throw IOException("Impossible de créer le document")
+                val target = created
+                val bytes = (contentResolver.openInputStream(media.uri) ?: throw IOException("Source illisible")).use { input ->
+                    (contentResolver.openOutputStream(target, "w") ?: throw IOException("Destination non accessible")).use { output ->
+                        input.copyTo(output, 64 * 1024)
+                    }
+                }
+                if (media.size > 0 && bytes != media.size) throw IOException("Taille copiée incorrecte")
+                copied++
+            } catch (_: Exception) {
+                failed++
+                if (created != null) try { DocumentsContract.deleteDocument(contentResolver, created) } catch (_: Exception) {}
+            }
+        }
+        runOnUiThread {
+            AlertDialog.Builder(this).setTitle("Copie terminée")
+                .setMessage("$copied copie(s) effectuée(s), $failed échec(s). Les originaux n'ont pas été déplacés ou effacés. Vérifie les fichiers dans le dossier choisi.")
+                .setPositiveButton("Compris", null).show()
+        }
+    }
+
+    private fun trashSelected() {
+        val files = galleryItems.filter { selected.contains(it.key) }
+        if (files.isEmpty()) return
+        if (Build.VERSION.SDK_INT < 30) {
+            toast("Corbeille disponible sur Android 11 ou supérieur uniquement.")
+            return
+        }
+        if (files.size > 100) {
+            toast("Par sécurité, la corbeille est limitée à 100 médias par opération.")
+            return
+        }
+        AlertDialog.Builder(this).setTitle("Mettre ${files.size} médias à la corbeille ?")
+            .setMessage("Cette opération agit sur les VRAIS fichiers du téléphone, pas seulement sur leur catégorie. Android demandera une seconde confirmation. Tu pourras généralement récupérer les fichiers depuis la corbeille avant son expiration. Ce n'est PAS un effacement sécurisé.")
+            .setNegativeButton("Conserver", null)
+            .setPositiveButton("Continuer vers Android") { _, _ ->
+                pendingTrash = files
+                try {
+                    val intent = MediaStore.createTrashRequest(contentResolver, files.map { it.uri }, true)
+                    startIntentSenderForResult(intent.intentSender, trashRequest, null, 0, 0, 0)
+                } catch (_: Exception) {
+                    pendingTrash = emptyList()
+                    toast("La demande de mise à la corbeille a échoué : aucun fichier modifié par l'application.")
+                }
+            }.show()
+    }
+
+    private fun exportCategories() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, "Lapibreizh-classement.json")
+            }, backupExportRequest)
+        } catch (_: Exception) { toast("Enregistrement de la sauvegarde indisponible.") }
+    }
+
+    private fun exportJson(): String {
+        val assignments = JSONObject()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith("media_") && value is String) assignments.put(key.removePrefix("media_"), value)
+        }
+        return JSONObject().put("format", "lapibreizh-classement")
+            .put("version", 1).put("categories", JSONArray(savedCategories()))
+            .put("assignments", assignments).toString(2)
+    }
+
+    private fun importCategories() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+            }, backupImportRequest)
+        } catch (_: Exception) { toast("Ouverture de sauvegarde indisponible.") }
+    }
+
+    private fun restoreJson(input: String) {
+        try {
+            val backup = JSONObject(input)
+            if (backup.optString("format") != "lapibreizh-classement" || backup.optInt("version") != 1) {
+                toast("Fichier non reconnu : sauvegarde Lapibreizh version 1 requise.")
+                return
+            }
+            val array = backup.getJSONArray("categories")
+            if (array.length() > 1000) throw IOException("Trop de catégories")
+            val imported = (0 until array.length()).map { array.getString(it) }
+                .filter { it.isNotBlank() && it.length <= 40 && !it.contains('\u001f') }
+                .distinct()
+            val assignments = backup.getJSONObject("assignments")
+            val clean = linkedMapOf<String, String>()
+            val names = (savedCategories() + imported).distinct().toMutableList()
+            val iterator = assignments.keys()
+            while (iterator.hasNext()) {
+                val key = iterator.next()
+                if (!key.matches(Regex("[iv]:[0-9]{1,19}"))) continue
+                val category = assignments.optString(key, "")
+                if (category.isNotBlank() && (category.length > 40 || category.contains('\u001f'))) continue
+                if (category.isNotBlank() && !names.contains(category)) names.add(category)
+                clean[key] = category
+            }
+            AlertDialog.Builder(this).setTitle("Importer le classement ?")
+                .setMessage("${clean.size} attribution(s) dans la sauvegarde. Les catégories seront fusionnées. Le classement de ces mêmes médias sera remplacé. Les fichiers du téléphone ne seront jamais touchés. Les identifiants des médias doivent encore correspondre à ceux du téléphone.")
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton("Importer") { _, _ ->
+                    val edit = prefs.edit().putString("category_names", names.joinToString("\u001f"))
+                    clean.forEach { (key, value) -> edit.putString("media_$key", value) }
+                    edit.apply()
+                    toast("${clean.size} attribution(s) importée(s). Vérifie les catégories.")
+                    showSettings()
+                }.show()
+        } catch (_: Exception) { toast("Sauvegarde illisible ou incompatible. Aucun classement modifié.") }
+    }
+
+    private fun readSmallBackup(uri: Uri): String {
+        val source = contentResolver.openInputStream(uri) ?: throw IOException("Fichier inaccessible")
+        return source.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(4096)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                total += read
+                if (total > 8_000_000) throw IOException("Fichier trop volumineux")
+                output.write(buffer, 0, read)
+            }
+            output.toString("UTF-8")
+        }
+    }
+
+    @Deprecated("Activity result compatibility on Android 8+")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == trashRequest) {
+            pendingTrash = emptyList()
+            if (resultCode == RESULT_OK) {
+                toast("Mise à la corbeille confirmée par Android.")
+                if (route != Route.HOME && route != Route.SETTINGS) showGallery(route)
+            } else toast("Mise à la corbeille annulée.")
+            return
+        }
+        if (resultCode != RESULT_OK || data?.data == null) {
+            if (requestCode == copyFolderRequest) pendingCopy = emptyList()
+            return
+        }
+        val uri = data.data ?: return
+        when (requestCode) {
+            backupExportRequest -> io.execute {
+                val success = try {
+                    (contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Écriture impossible"))
+                        .bufferedWriter().use { it.write(exportJson()) }
+                    true
+                } catch (_: Exception) { false }
+                runOnUiThread { toast(if (success) "Sauvegarde du classement enregistrée." else "Échec de la sauvegarde : vérifie le fichier.") }
+            }
+            backupImportRequest -> io.execute {
+                val text = try { readSmallBackup(uri) } catch (_: Exception) { null }
+                runOnUiThread {
+                    if (text == null) toast("Impossible de lire cette sauvegarde (8 Mo maximum).")
+                    else restoreJson(text)
+                }
+            }
+            copyFolderRequest -> {
+                val batch = pendingCopy
+                pendingCopy = emptyList()
+                if (batch.isNotEmpty()) {
+                    toast("Copie de ${batch.size} média(s) en cours. Garde l'application ouverte.")
+                    io.execute { copyToFolder(uri, batch) }
+                }
+            }
+        }
+    }
+
+    private fun manageCategory(category: String) {
+        AlertDialog.Builder(this).setTitle(category)
+            .setItems(arrayOf("Renommer", "Supprimer cette catégorie du classement")) { _, choice ->
+                if (choice == 0) {
+                    val nameField = EditText(this).apply {
+                        setText(category); setSingleLine(true); setTextColor(cream)
+                    }
+                    AlertDialog.Builder(this).setTitle("Renommer la catégorie").setView(nameField)
+                        .setNegativeButton("Annuler", null)
+                        .setPositiveButton("Renommer") { _, _ ->
+                            val name = nameField.text.toString().trim().replace("\u001f", "")
+                            if (name.isEmpty() || name.length > 40 ||
+                                savedCategories().any { it.equals(name, true) && it != category }) {
+                                toast("Nom vide, trop long ou déjà utilisé.")
+                            } else {
+                                val edit = prefs.edit()
+                                edit.putString("category_names", savedCategories().map { if (it == category) name else it }.joinToString("\u001f"))
+                                prefs.all.forEach { (key, value) ->
+                                    if (key.startsWith("media_") && value == category) edit.putString(key, name)
+                                }
+                                edit.apply()
+                                showSettings()
+                            }
+                        }.show()
+                } else {
+                    val count = prefs.all.count { (key, value) -> key.startsWith("media_") && value == category }
+                    AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
+                        .setMessage("$count classement(s) seront retirés : leurs médias redeviendront « Sans catégorie ». AUCUNE photo ou vidéo ne sera supprimée du téléphone.")
+                        .setNegativeButton("Annuler", null)
+                        .setPositiveButton("Supprimer la catégorie") { _, _ ->
+                            val edit = prefs.edit().putString("category_names", savedCategories().filter { it != category }.joinToString("\u001f"))
+                            prefs.all.forEach { (key, value) ->
+                                if (key.startsWith("media_") && value == category) edit.putString(key, "")
+                            }
+                            edit.apply()
+                            showSettings()
+                        }.show()
+                }
+            }.show()
+    }
+
     private fun showSettings() {
         route = Route.SETTINGS
         selected.clear()
         val layout = root()
         layout.addView(action("‹ Retour à l’accueil") { showHome() })
         layout.addView(heading("PARAMÈTRES"))
-        layout.addView(note("Catégories internes : les photos et vidéos d’origine ne sont jamais déplacées ou supprimées."))
+        layout.addView(note("Les catégories sont internes à l'application. Sauvegarde-les avant toute désinstallation : celle-ci peut effacer le classement."))
         layout.addView(heading("Mes catégories", 19f))
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        savedCategories().forEach { category -> list.addView(note("• $category")) }
-        layout.addView(list)
-        layout.addView(action("Ajouter une catégorie") {
+        savedCategories().forEach { category ->
+            layout.addView(action("✎ $category") { manageCategory(category) }, LinearLayout.LayoutParams(-1, dp(47)))
+        }
+        layout.addView(action("+ Ajouter une catégorie") {
             val editText = EditText(this).apply {
                 hint = "Nom de la catégorie"
                 setTextColor(cream)
@@ -473,11 +874,17 @@ class MainActivity : AppCompatActivity() {
                     if (name.isNotEmpty() && name.length <= 40 && !savedCategories().any { it.equals(name, true) }) {
                         prefs.edit().putString("category_names", (savedCategories() + name).joinToString("\u001f")).apply()
                         showSettings()
-                    } else Toast.makeText(this, "Nom vide, trop long ou déjà utilisé", Toast.LENGTH_SHORT).show()
+                    } else toast("Nom vide, trop long ou déjà utilisé.")
                 }.setNegativeButton("Annuler", null).show()
-        })
-        layout.addView(note("Pour attribuer une catégorie : ouvre Mes images ou Montages vidéo, puis maintiens une miniature appuyée."))
-        layout.addView(note("Cette version n’analyse pas automatiquement les images. Aucun doublon n’est effacé."))
+        }, LinearLayout.LayoutParams(-1, dp(51)))
+        layout.addView(heading("Sauvegarder ton classement", 19f))
+        layout.addView(action("Exporter la sauvegarde JSON") { exportCategories() }, LinearLayout.LayoutParams(-1, dp(54)))
+        layout.addView(action("Importer une sauvegarde JSON") { importCategories() }, LinearLayout.LayoutParams(-1, dp(54)))
+        layout.addView(note("Une sauvegarde contient tes catégories et les identifiants des médias, pas les photos. Réimportation conçue pour la même médiathèque : si Android change ses identifiants, certaines associations ne reviendront pas."))
+        layout.addView(heading("Sécurité des fichiers", 19f))
+        layout.addView(note("Copier crée de nouveaux fichiers dans le dossier choisi sans toucher aux originaux. Corbeille agit sur les vrais fichiers après deux validations : aucune suppression définitive ni effacement sécurisé dans cette version."))
+        layout.addView(note("Doublons : détection SHA-256 des photos strictement identiques de 50 Mo maximum ; aucune suppression automatique. Les photos visuellement similaires ne sont pas repérées."))
+        layout.addView(note("Version 0.3 · Appui long sur une miniature pour sélectionner."))
         setContentView(ScrollView(this).apply { addView(layout) })
     }
 
