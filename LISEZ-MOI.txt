@@ -1,14 +1,11 @@
-LES LAPIBREIZH V0.5.5 — VERSION ANDROID VISIBLE
+LES LAPIBREIZH V0.5.5 — APPLICATION COMPLETE
 
-Les 3 fichiers sont volontairement à la racine du ZIP.
-
-À placer dans Gitling :
-1. v055_restore_and_menus.py  → RACINE du dépôt
-2. build-v055.yml             → .github/workflows/build-v055.yml
-3. LISEZ-MOI.txt              → facultatif
+Ce ZIP est destiné à remplacer le CONTENU du dépôt Gitling Les-Lapibreizh-Android.
+Il contient déjà l'arborescence Android et le workflow GitHub au bon emplacement.
 
 IMPORTANT :
-Le script repart du commit stable V0.5.3 :
-fb5a62b650376825ee43498d99e79bd95c7420f1
-
-Puis : Stage all → Commit → Push.
+- Ne supprime pas le dossier .git de ton dépôt Gitling.
+- Extrais le ZIP puis copie TOUT son contenu à la racine Les-Lapibreizh-Android.
+- Accepte les remplacements.
+- Gitling : État > Stage all > Commit > Push.
+- Le workflow restaure lui-même les visuels HD originaux V0.5.3 avant compilation.
