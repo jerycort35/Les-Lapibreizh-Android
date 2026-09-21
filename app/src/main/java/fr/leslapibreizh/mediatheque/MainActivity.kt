@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = black
         window.navigationBarColor = black
+        // Sécurité V0.5.6 : aucun classement automatique tant qu’il n’est pas validé.
+        prefs.edit().putBoolean("auto_sort", false).putBoolean("auto_suggest", false).putBoolean("auto_create", false).apply()
         showHome()
     }
 
@@ -111,29 +113,59 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(n: Int) = (resources.displayMetrics.density * n + 0.5f).toInt()
 
+    private fun hero(resId: Int, heightDp: Int): ImageView = ImageView(this).apply {
+        setImageResource(resId)
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        adjustViewBounds = true
+        contentDescription = "Illustration Les Lapibreizh"
+    }
+
+    private fun navBar(active: Route): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(0, dp(5), 0, dp(3))
+        listOf(
+            Triple("⌂\nAccueil", Route.HOME) { showHome() },
+            Triple("▣\nImages", Route.IMAGES) { navigate(Route.IMAGES) },
+            Triple("▶\nVidéos", Route.VIDEOS) { navigate(Route.VIDEOS) },
+            Triple("♡\nFavoris", Route.UNSORTED) { navigate(Route.UNSORTED) },
+            Triple("⚙\nParamètres", Route.SETTINGS) { showSettings() }
+        ).forEach { (label, r, click) ->
+            val b=action(label, click).apply {
+                textSize=11f
+                if(r==active) backgroundTintList=android.content.res.ColorStateList.valueOf(Color.rgb(91,70,39))
+            }
+            addView(b, LinearLayout.LayoutParams(0, dp(64), 1f).apply { marginStart=dp(2); marginEnd=dp(2) })
+        }
+    }
+
     private fun showHome() {
         route = Route.HOME
         selected.clear()
-        val layout = root()
-        val logo = ImageView(this).apply {
-            setImageResource(R.drawable.lapibreizh_icon)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "Les deux lapins Lapibreizh, logo de la médiathèque"
-        }
-        layout.addView(logo, LinearLayout.LayoutParams(-1, dp(168)))
-        layout.addView(heading("LA MÉDIATHÈQUE", 23f))
-        layout.addView(note("Images • Vidéos • Créations"))
+        val screen=root().apply { setPadding(dp(8),dp(8),dp(8),dp(5)) }
+        screen.addView(hero(R.drawable.home_lapibreizh, 250), LinearLayout.LayoutParams(-1,dp(250)))
+        screen.addView(heading("LES LAPIBREIZH — LA MÉDIATHÈQUE",22f))
+        screen.addView(note("Images • Vidéos • Créations"))
+
+        val univers=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        univers.addView(action("▣\nIMAGES\nTrier • Retrouver\nPartager • Organiser") { navigate(Route.IMAGES) },
+            LinearLayout.LayoutParams(0,dp(145),1f).apply{marginEnd=dp(4)})
+        univers.addView(action("▶\nMONTAGES VIDÉO — EDITS\nCréer • Trier\nPartager • Organiser") { navigate(Route.VIDEOS) },
+            LinearLayout.LayoutParams(0,dp(145),1f).apply{marginStart=dp(4)})
+        screen.addView(univers)
+
+        val shortcuts=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         listOf(
-            "MES IMAGES" to Route.IMAGES,
-            "MONTAGES VIDÉO — EDITS" to Route.VIDEOS,
-            "À CLASSER" to Route.UNSORTED,
-            "PARAMÈTRES" to Route.SETTINGS
-        ).forEach { (title, target) ->
-            val b = action(title) { navigate(target) }
-            layout.addView(b, LinearLayout.LayoutParams(-1, dp(66)).apply { topMargin = dp(9) })
-        }
-        layout.addView(note("Version 0.5.4 · menus complets · actions sensibles confirmées"))
-        setContentView(layout)
+            "⌕\nRetrouver\nimage/vidéo" to { navigate(Route.IMAGES) },
+            "☷\nÀ classer" to { navigate(Route.UNSORTED) },
+            "▣\nRenvoyer\ngalerie" to { navigate(Route.IMAGES) },
+            "⚙\nParamètres" to { showSettings() }
+        ).forEach { (label,click) -> shortcuts.addView(action(label,click),LinearLayout.LayoutParams(0,dp(102),1f).apply{marginStart=dp(2);marginEnd=dp(2)}) }
+        screen.addView(shortcuts,LinearLayout.LayoutParams(-1,dp(102)).apply{topMargin=dp(8)})
+        screen.addView(hero(R.drawable.home_bretagne, 125),LinearLayout.LayoutParams(-1,dp(125)).apply{topMargin=dp(8)})
+        screen.addView(note("Créer  •  Classer  •  Partager  •  Revivre"))
+        screen.addView(note("Version 0.5.7 · interface HD · tri automatique désactivé"))
+        screen.addView(navBar(Route.HOME))
+        setContentView(ScrollView(this).apply { addView(screen) })
     }
 
     private fun navigate(next: Route) {
@@ -347,7 +379,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun thumbnail(media: Media): Bitmap? {
-        if (Build.VERSION.SDK_INT >= 29) return contentResolver.loadThumbnail(media.uri, Size(220, 220), null)
+        if (Build.VERSION.SDK_INT >= 29) return contentResolver.loadThumbnail(media.uri, Size(720, 720), null)
         return if (media.mime.startsWith("video/")) {
             @Suppress("DEPRECATION")
             MediaStore.Video.Thumbnails.getThumbnail(contentResolver, media.id,
@@ -475,7 +507,7 @@ class MainActivity : AppCompatActivity() {
             text = label
             textSize = 14f
             setTextColor(cream)
-            isChecked = prefs.getBoolean(key, true)
+            isChecked = if (enabled) prefs.getBoolean(key, true) else false
             isEnabled = enabled
             setPadding(dp(8), dp(7), dp(8), dp(7))
             setOnCheckedChangeListener { _, checked ->
@@ -514,7 +546,7 @@ class MainActivity : AppCompatActivity() {
         imports.addView(action("Importer tous les albums") { showAlbumImport() })
         layout.addView(imports, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val auto = section("TRI AUTOMATIQUE", "Préparé pour la dernière étape, comme convenu.")
+        val auto = section("TRI AUTOMATIQUE", "Désactivé pour le moment, comme convenu. Aucun fichier ne sera classé automatiquement.")
         auto.addView(switchRow("Activer le tri automatique  ·  À venir", "auto_sort", false))
         auto.addView(switchRow("Proposer une catégorie  ·  À venir", "auto_suggest", false))
         auto.addView(switchRow("Créer une catégorie si besoin  ·  À venir", "auto_create", false))
