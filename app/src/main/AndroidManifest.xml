@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <application
         android:theme="@style/Theme.Lapibreizh"
-        android:label="Les Lapibreizh"
+        android:label="Lapibreizh Médiathèque"
         android:icon="@drawable/lapibreizh_icon"
         android:roundIcon="@drawable/lapibreizh_icon"
         android:allowBackup="false">

@@ -1,0 +1,35 @@
+LES LAPIBREIZH — MÉDIATHÈQUE V0.5.0
+===================================
+
+BASE PROPRE V0.5
+- applicationId conservé : fr.leslapibreizh.mediatheque
+- versionCode : 6
+- versionName : 0.5.0
+- icône dédiée « MÉDIATHÈQUE » noir/or
+- nom Android : Lapibreizh Médiathèque
+- fonctions V0.4.1 conservées
+- interface issue des 11 maquettes validées, sans inventer de fonctions non opérationnelles
+
+SIGNATURE STABLE
+Le SEUL workflow actif est : .github/workflows/build-apk.yml
+Il :
+1. exige LAPIBREIZH_KEYSTORE_B64 ;
+2. restaure la clé privée dans le runner GitHub ;
+3. exige LAPIBREIZH_KEYSTORE_PASSWORD ;
+4. compile avec assembleRelease ;
+5. vérifie app-release.apk avec apksigner et affiche le certificat ;
+6. publie l'artefact Les-Lapibreizh-V050-SIGNED.
+
+Aucun secret ni keystore privé n'est inclus dans ce ZIP.
+Ne jamais ajouter le fichier .jks ou les valeurs des secrets au dépôt public.
+
+INSTALLATION PROPRE
+Cette V0.5 est destinée à devenir la nouvelle base signée stable.
+Après compilation verte, télécharger Les-Lapibreizh-V050-SIGNED puis app-release.apk.
+Si une ancienne version DEBUG est encore installée, elle peut devoir être désinstallée une dernière fois avant cette V0.5.
+À partir de cette V0.5, les futures versions devront conserver exactement la même clé de signature.
+
+DONNÉES
+L'export JSON sauvegarde le classement et les catégories, pas les photos/vidéos.
+La désinstallation peut effacer les données internes de l'application.
+La corbeille Android n'est pas un effacement forensique sécurisé.

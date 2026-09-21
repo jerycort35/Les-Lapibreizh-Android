@@ -32,7 +32,7 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 
 /**
- * V0.4.1 : correction de la composition visuelle à partir des maquettes validées, tri et favoris,
+ * V0.5.0 : correction de la composition visuelle à partir des maquettes validées, tri et favoris,
  * recherche de photos strictement identiques et mise à la corbeille avec accord système.
  * Une copie n'efface JAMAIS l'original ; une mise à la corbeille exige deux confirmations.
  */
@@ -1308,7 +1308,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(heading("Sécurité des fichiers", 19f))
         layout.addView(note("Copier crée de nouveaux fichiers dans le dossier choisi sans toucher aux originaux. Corbeille agit sur les vrais fichiers après deux validations : aucune suppression définitive ni effacement sécurisé dans cette version."))
         layout.addView(note("Doublons : détection SHA-256 des photos strictement identiques de 50 Mo maximum ; aucune suppression automatique. Les photos visuellement similaires ne sont pas repérées."))
-        layout.addView(note("Version 0.4.1 · Appui long sur une miniature pour sélectionner."))
+        layout.addView(note("Version 0.5.0 · Appui long sur une miniature pour sélectionner."))
         val screen=root()
         screen.addView(ScrollView(this).apply { addView(layout) },LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(navBar(Route.SETTINGS))
