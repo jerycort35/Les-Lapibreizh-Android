@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private var duplicateIndex = 0
     private val duplicateTrashSelection = linkedSetOf<String>()
     private var pendingTrashKeys = emptyList<String>()
+    private var pendingCategoryImage: String? = null
     private var screenMode = "home"
     private var textSearch = ""
     private var pendingCategory: String? = null
@@ -368,13 +369,18 @@ class MainActivity : AppCompatActivity() {
         categories.take(12).forEachIndexed { i, cat ->
             hits += hs(xs[i % 3],ys[i / 3],271,208,cat) { openGalleryCategory(cat,Route.VIDEOS) }
         }
-        hits += hs(15,1165,831,177,"Autres vidéos") { navigate(Route.VIDEOS) }
+        hits += hs(15,1165,831,177,"Autres vidéos") { openOtherVideos() }
         hits += hs(15,1356,167,173,"Accueil") { showHome() }
         hits += hs(183,1356,170,173,"Images") { showImagesCategories() }
         hits += hs(353,1356,170,173,"Vidéos") { navigate(Route.VIDEOS) }
         hits += hs(523,1356,170,173,"Favoris") { navigate(Route.FAVORITES) }
         hits += hs(693,1356,160,173,"Paramètres") { showSettings() }
         artworkScreen(R.drawable.ui_videos_exact,864,1536,hits)
+    }
+
+    private fun openOtherVideos() {
+        pendingCategory = ""
+        navigate(Route.VIDEOS)
     }
 
     private fun openFilters() {
@@ -579,16 +585,16 @@ class MainActivity : AppCompatActivity() {
             val media = shownItems[position]
             if (selected.isEmpty()) openMedia(media) else {
                 if (selected.contains(media.key)) selected.remove(media.key)
-                else if (selected.size < 100) selected.add(media.key)
-                else Toast.makeText(this,"100 éléments maximum",Toast.LENGTH_SHORT).show()
+                else if (selected.size < 1000) selected.add(media.key)
+                else Toast.makeText(this,"1 000 éléments maximum pour déplacer / classer",Toast.LENGTH_SHORT).show()
                 updateSelection()
             }
         }
         g.setOnItemLongClickListener { _, _, position, _ ->
             val key = shownItems[position].key
             if (selected.contains(key)) selected.remove(key)
-            else if (selected.size < 100) selected.add(key)
-            else Toast.makeText(this,"100 éléments maximum",Toast.LENGTH_SHORT).show()
+            else if (selected.size < 1000) selected.add(key)
+            else Toast.makeText(this,"1 000 éléments maximum pour déplacer / classer",Toast.LENGTH_SHORT).show()
             updateSelection()
             true
         }
@@ -931,7 +937,25 @@ class MainActivity : AppCompatActivity() {
         layout.addView(heading("MODIFIER UNE CATÉGORIE"))
         layout.addView(note("Personnalise ta catégorie"))
         layout.addView(heading(category, 19f))
-        layout.addView(hero(categoryArtwork(category),145), LinearLayout.LayoutParams(-1,dp(145)))
+        val categoryPreview = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = "Image de la catégorie $category"
+            val savedUri = prefs.getString("category_image_$category", null)
+            if (!savedUri.isNullOrBlank()) {
+                try { setImageURI(Uri.parse(savedUri)) }
+                catch (_: Exception) { setImageResource(categoryArtwork(category)) }
+            } else setImageResource(categoryArtwork(category))
+        }
+        layout.addView(categoryPreview, LinearLayout.LayoutParams(-1,dp(145)))
+        layout.addView(action("Changer la photo") {
+            pendingCategoryImage = category
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+            startActivityForResult(intent, 305)
+        })
         val name = EditText(this).apply {
             setText(category); setTextColor(cream); setSingleLine(true)
             hint = "Nom de la catégorie"; setHintTextColor(0xFFAAAAAA.toInt())
@@ -946,6 +970,12 @@ class MainActivity : AppCompatActivity() {
             val e = prefs.edit().putString("category_names", cats.distinct().joinToString("\u001f"))
             prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
                 .forEach { e.putString(it, newName) }
+            if (newName != category) {
+                prefs.getString("category_image_$category", null)?.let {
+                    e.putString("category_image_$newName", it)
+                    e.remove("category_image_$category")
+                }
+            }
             e.apply()
             Toast.makeText(this, "Catégorie modifiée", Toast.LENGTH_SHORT).show()
             showSettings()
@@ -1086,6 +1116,14 @@ class MainActivity : AppCompatActivity() {
         screenMode = "delete"
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
+        if (medias.size > 500) {
+            AlertDialog.Builder(this)
+                .setTitle("500 médias maximum")
+                .setMessage("Tu as sélectionné ${medias.size} médias. La suppression est limitée à 500 médias par opération.")
+                .setPositiveButton("Compris", null)
+                .show()
+            return
+        }
         val total = medias.sumOf { it.size }
         val layout = root()
         layout.addView(hero(R.drawable.art_settings_header,75),LinearLayout.LayoutParams(-1,dp(75)))
@@ -1107,12 +1145,29 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(confirmed)
         layout.addView(action(if (Build.VERSION.SDK_INT >= 30) "Mettre à la corbeille" else "Supprimer définitivement") {
-            if (confirmed.isChecked) requestTrash(medias)
+            if (confirmed.isChecked) confirmTrashFinal(medias)
             else Toast.makeText(this,"Confirme d’abord ta sélection",Toast.LENGTH_SHORT).show()
         })
         layout.addView(action("Annuler") { loadGallery() })
         layout.addView(hero(R.drawable.art_footer_bretagne,135), LinearLayout.LayoutParams(-1,dp(135)))
         setContentView(ScrollView(this).apply { addView(layout) })
+    }
+
+    private fun confirmTrashFinal(medias: List<Media>) {
+        if (medias.size > 500) {
+            AlertDialog.Builder(this)
+                .setTitle("500 médias maximum")
+                .setMessage("Cette opération contient ${medias.size} médias. Réduis la sélection à 500 maximum.")
+                .setPositiveButton("Compris", null)
+                .show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Dernière confirmation")
+            .setMessage("Confirmer la mise à la corbeille de ${medias.size} média(s) ?")
+            .setPositiveButton("Oui, continuer") { _, _ -> requestTrash(medias) }
+            .setNegativeButton("Annuler", null)
+            .show()
     }
 
     private fun requestTrash(medias: List<Media>) {
@@ -1144,6 +1199,17 @@ class MainActivity : AppCompatActivity() {
             }
             pendingTrashKeys = emptyList()
             if (route == Route.SETTINGS) showSettings() else loadGallery()
+        } else if (requestCode == 305 && resultCode == RESULT_OK) {
+            val category = pendingCategoryImage
+            val uri = data?.data
+            if (category != null && uri != null) {
+                try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                catch (_: Exception) {}
+                prefs.edit().putString("category_image_$category", uri.toString()).apply()
+                Toast.makeText(this, "Photo de catégorie enregistrée", Toast.LENGTH_SHORT).show()
+                pendingCategoryImage = null
+                showCategoryEditor(category)
+            }
         }
     }
 
@@ -1263,18 +1329,25 @@ class MainActivity : AppCompatActivity() {
         val medias = all.filter { duplicateTrashSelection.contains(it.key) }
         AlertDialog.Builder(this).setTitle("Récapitulatif")
             .setMessage("${medias.size} doublon(s) sélectionné(s). Android demandera confirmation avant la mise à la corbeille.")
-            .setPositiveButton("Continuer") { _, _ -> requestTrash(medias) }
+            .setPositiveButton("Continuer") { _, _ -> confirmTrashFinal(medias) }
             .setNegativeButton("Revenir", null).show()
     }
 
     private fun confirmReset() {
         AlertDialog.Builder(this).setTitle("Réinitialiser l’application ?")
             .setMessage("Les préférences et classements Lapibreizh seront effacés. Tes photos et vidéos resteront intactes.")
-            .setPositiveButton("Réinitialiser") { _, _ ->
-                prefs.edit().clear().apply()
-                selected.clear()
-                bitmapCache.evictAll()
-                showHome()
+            .setPositiveButton("Continuer") { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle("Dernière confirmation")
+                    .setMessage("Cette action effacera les réglages, favoris, catégories personnalisées et classements enregistrés dans l’application. Les photos et vidéos originales resteront intactes. Confirmer ?")
+                    .setPositiveButton("Oui, réinitialiser") { _, _ ->
+                        prefs.edit().clear().apply()
+                        selected.clear()
+                        bitmapCache.evictAll()
+                        showHome()
+                    }
+                    .setNegativeButton("Annuler", null)
+                    .show()
             }.setNegativeButton("Annuler", null).show()
     }
 
