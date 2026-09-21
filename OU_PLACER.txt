@@ -1,0 +1,3 @@
+v053_patch.py : racine du dépôt, au même niveau que app et gradlew.
+build-apk.yml : dans .github/workflows/ en remplaçant l'ancien.
+Commit : V0.5.3 — paramètres noir-or et navigation doublons

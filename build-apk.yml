@@ -1,0 +1,23 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply V0.5.3
+        run: python3 v053_patch.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Les-Lapibreizh-Mediatheque-V053
+          path: app/build/outputs/apk/debug/app-debug.apk
