@@ -221,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         }
         content.addView(quick, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin=dp(7) })
         content.addView(note("Créer • Classer • Partager • Revivre"))
-        screen.addView(ScrollView(this).apply { fillViewport=false; addView(content) },
+        screen.addView(ScrollView(this).apply { addView(content) },
             LinearLayout.LayoutParams(-1,0,1f))
         screen.addView(navBar(Route.HOME))
         setContentView(screen)
