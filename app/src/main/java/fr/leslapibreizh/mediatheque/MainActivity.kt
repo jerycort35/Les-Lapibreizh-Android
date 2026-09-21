@@ -125,8 +125,8 @@ class MainActivity : AppCompatActivity() {
         setPadding(0, dp(5), 0, dp(3))
         listOf(
             Triple("⌂\nAccueil", Route.HOME) { showHome() },
-            Triple("▣\nImages", Route.IMAGES) { navigate(Route.IMAGES) },
-            Triple("▶\nVidéos", Route.VIDEOS) { navigate(Route.VIDEOS) },
+            Triple("▣\nImages", Route.IMAGES) { showMediaDashboard(Route.IMAGES) },
+            Triple("▶\nVidéos", Route.VIDEOS) { showMediaDashboard(Route.VIDEOS) },
             Triple("♡\nFavoris", Route.UNSORTED) { navigate(Route.UNSORTED) },
             Triple("⚙\nParamètres", Route.SETTINGS) { showSettings() }
         ).forEach { (label, r, click) ->
@@ -138,33 +138,130 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun panel(title: String, subtitle: String, onClick: () -> Unit): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(10), dp(12), dp(10), dp(12))
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(16).toFloat()
+            setColor(Color.rgb(22, 18, 14))
+            setStroke(dp(1), Color.rgb(112, 83, 42))
+        }
+        addView(TextView(this@MainActivity).apply {
+            text = title; textSize = 18f; setTextColor(gold); gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = subtitle; textSize = 11.5f; setTextColor(cream); gravity = Gravity.CENTER
+            setPadding(2, dp(5), 2, 0)
+        })
+        setOnClickListener { onClick() }
+    }
+
     private fun showHome() {
         route = Route.HOME
         selected.clear()
-        val screen=root().apply { setPadding(dp(8),dp(8),dp(8),dp(5)) }
-        screen.addView(hero(R.drawable.home_lapibreizh, 250), LinearLayout.LayoutParams(-1,dp(250)))
-        screen.addView(heading("LES LAPIBREIZH — LA MÉDIATHÈQUE",22f))
-        screen.addView(note("Images • Vidéos • Créations"))
+        val screen = root().apply { setPadding(dp(8), dp(7), dp(8), dp(5)) }
 
-        val univers=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        univers.addView(action("▣\nIMAGES\nTrier • Retrouver\nPartager • Organiser") { navigate(Route.IMAGES) },
-            LinearLayout.LayoutParams(0,dp(145),1f).apply{marginEnd=dp(4)})
-        univers.addView(action("▶\nMONTAGES VIDÉO — EDITS\nCréer • Trier\nPartager • Organiser") { navigate(Route.VIDEOS) },
-            LinearLayout.LayoutParams(0,dp(145),1f).apply{marginStart=dp(4)})
+        screen.addView(hero(R.drawable.home_bretagne, 205), LinearLayout.LayoutParams(-1, dp(205)))
+        screen.addView(heading("Les Lapibreizh", 29f).apply { setPadding(2, dp(7), 2, 0) })
+        screen.addView(heading("LA MÉDIATHÈQUE", 20f).apply { setPadding(2, 0, 2, 0) })
+        screen.addView(note("Images • Vidéos • Créations").apply { setPadding(2, 1, 2, 0) })
+        screen.addView(TextView(this).apply {
+            text = "Notre passion en images"; textSize = 17f; setTextColor(cream); gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.create("cursive", android.graphics.Typeface.ITALIC)
+            setPadding(2, dp(2), 2, dp(10))
+        })
+
+        val univers = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        univers.addView(panel("IMAGES", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { showMediaDashboard(Route.IMAGES) },
+            LinearLayout.LayoutParams(0, dp(126), 1f).apply { marginEnd = dp(4) })
+        univers.addView(panel("MONTAGES VIDÉO\n— EDITS —", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { showMediaDashboard(Route.VIDEOS) },
+            LinearLayout.LayoutParams(0, dp(126), 1f).apply { marginStart = dp(4) })
         screen.addView(univers)
 
-        val shortcuts=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        listOf(
-            "⌕\nRetrouver\nimage/vidéo" to { navigate(Route.IMAGES) },
-            "☷\nÀ classer" to { navigate(Route.UNSORTED) },
-            "▣\nRenvoyer\ngalerie" to { navigate(Route.IMAGES) },
-            "⚙\nParamètres" to { showSettings() }
-        ).forEach { (label,click) -> shortcuts.addView(action(label,click),LinearLayout.LayoutParams(0,dp(102),1f).apply{marginStart=dp(2);marginEnd=dp(2)}) }
-        screen.addView(shortcuts,LinearLayout.LayoutParams(-1,dp(102)).apply{topMargin=dp(8)})
-        screen.addView(hero(R.drawable.home_bretagne, 125),LinearLayout.LayoutParams(-1,dp(125)).apply{topMargin=dp(8)})
-        screen.addView(note("Créer  •  Classer  •  Partager  •  Revivre"))
-        screen.addView(note("Version 0.5.7 · interface HD · tri automatique désactivé"))
+        val labels = listOf(
+            "⌕  Retrouver\nune image/vidéo" to { showMediaDashboard(Route.IMAGES) },
+            "☷  À classer" to { navigate(Route.UNSORTED) },
+            "↥  Renvoyer\ndans la galerie" to { showMediaDashboard(Route.IMAGES) },
+            "⚙  Paramètres" to { showSettings() }
+        )
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        labels.forEach { (label, click) ->
+            row.addView(panel(label, "", click), LinearLayout.LayoutParams(0, dp(86), 1f).apply {
+                marginStart = dp(2); marginEnd = dp(2)
+            })
+        }
+        screen.addView(row, LinearLayout.LayoutParams(-1, dp(86)).apply { topMargin = dp(8) })
+        screen.addView(hero(R.drawable.home_lapibreizh, 150), LinearLayout.LayoutParams(-1, dp(150)).apply { topMargin = dp(8) })
+        screen.addView(note("Créer   •   Classer   •   Partager   •   Revivre"))
+        screen.addView(heading("LES LAPIBREIZH TOUJOURS AVEC VOUS", 14f).apply { setPadding(2, 0, 2, dp(5)) })
         screen.addView(navBar(Route.HOME))
+        setContentView(ScrollView(this).apply { addView(screen) })
+    }
+
+    /** Écran 2 validé : véritable entrée Médiathèque avant la grille technique. */
+    private fun showMediaDashboard(kind: Route) {
+        route = kind
+        selected.clear()
+        val screen = root().apply { setPadding(dp(8), dp(7), dp(8), dp(5)) }
+        screen.addView(hero(R.drawable.home_bretagne, 180), LinearLayout.LayoutParams(-1, dp(180)))
+        screen.addView(heading("Les Lapibreizh — MÉDIATHÈQUE", 22f).apply { setPadding(2, dp(6), 2, 0) })
+        screen.addView(note("Images • Vidéos • Créations").apply { setPadding(2, 0, 2, 0) })
+        screen.addView(TextView(this).apply {
+            text = if (kind == Route.IMAGES) "La Bretagne en images !" else "Nos histoires en mouvement !"
+            textSize = 17f; setTextColor(cream); gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.create("cursive", android.graphics.Typeface.ITALIC)
+            setPadding(2, 0, 2, dp(8))
+        })
+
+        val search = action("⌕  Rechercher une image, une vidéo…     Filtres") { navigate(kind) }
+        screen.addView(search, LinearLayout.LayoutParams(-1, dp(52)))
+
+        val univers = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        univers.addView(panel("IMAGES", "TRIER • RETROUVER\nPARTAGER • ORGANISER") { navigate(Route.IMAGES) },
+            LinearLayout.LayoutParams(0, dp(112), 1f).apply { marginEnd = dp(4) })
+        univers.addView(panel("MONTAGES VIDÉO", "CRÉER • ÉDITER\nTRIER • PARTAGER • ORGANISER") { navigate(Route.VIDEOS) },
+            LinearLayout.LayoutParams(0, dp(112), 1f).apply { marginStart = dp(4) })
+        screen.addView(univers, LinearLayout.LayoutParams(-1, dp(112)).apply { topMargin = dp(7) })
+
+        screen.addView(heading("NOS UNIVERS", 17f).apply { gravity = Gravity.LEFT; setPadding(dp(4), dp(12), 0, dp(6)) })
+        val cats = listOf(
+            "🎓  Académie des Lapibreizh" to "248 images",
+            "🔵  Fiches couleurs" to "86 images",
+            "🏅  Fiches sportives" to "73 images",
+            "🛠  Bricolage" to "64 images",
+            "♨  Restaurant des Lapibreizh" to "92 images",
+            "🧭  Voyages de Carnot" to "58 images",
+            "🎬  Épisodes des Lapibreizh" to "76 images",
+            "♛  Personnages" to "118 images",
+            "🐇  Lapins réels" to "96 images",
+            "☷  À classer" to "34 images"
+        )
+        cats.chunked(2).forEach { pair ->
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEach { (name, count) ->
+                line.addView(panel(name, count) { navigate(if (name.contains("À classer")) Route.UNSORTED else Route.IMAGES) },
+                    LinearLayout.LayoutParams(0, dp(88), 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
+            }
+            screen.addView(line, LinearLayout.LayoutParams(-1, dp(88)).apply { bottomMargin = dp(6) })
+        }
+
+        screen.addView(panel("Chaque image raconte une histoire…", "Les Lapibreizh toujours avec vous") { navigate(kind) },
+            LinearLayout.LayoutParams(-1, dp(82)).apply { topMargin = dp(2) })
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(
+            "⌕\nRetrouver" to { navigate(kind) },
+            "⇅\nTrier" to { navigate(kind) },
+            "↥\nGalerie" to { navigate(kind) },
+            "⚙\nParamètres" to { showSettings() }
+        ).forEach { (label, click) ->
+            actions.addView(panel(label, "", click), LinearLayout.LayoutParams(0, dp(75), 1f).apply { marginStart=dp(2); marginEnd=dp(2) })
+        }
+        screen.addView(actions, LinearLayout.LayoutParams(-1, dp(75)).apply { topMargin = dp(7) })
+        screen.addView(navBar(kind))
+        screen.addView(note("Les Lapibreizh — Plus que des photos, une vie ensemble").apply { setPadding(2, dp(7), 2, dp(4)) })
         setContentView(ScrollView(this).apply { addView(screen) })
     }
 
@@ -229,7 +326,9 @@ class MainActivity : AppCompatActivity() {
             else -> "À CLASSER"
         }
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        toolbar.addView(action("‹ Retour") { showHome() }, LinearLayout.LayoutParams(dp(100), dp(48)))
+        toolbar.addView(action("‹ Retour") {
+            if (route == Route.IMAGES || route == Route.VIDEOS) showMediaDashboard(route) else showHome()
+        }, LinearLayout.LayoutParams(dp(100), dp(48)))
         toolbar.addView(heading(title, 18f), LinearLayout.LayoutParams(0, dp(48), 1f))
         layout.addView(toolbar)
         val info = note("Chargement des médias…")

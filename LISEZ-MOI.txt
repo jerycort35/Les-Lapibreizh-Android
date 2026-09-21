@@ -1,6 +1,14 @@
-LES LAPIBREIZH — PROJET ANDROID COMPLET V057
+LES LAPIBREIZH — V058 INTERFACE VALIDÉE
 
-Copier TOUT le contenu de ce ZIP à la racine du dépôt GitHub.
-Le ZIP contient les fichiers racine Gradle, le workflow GitHub Actions, le dossier app complet, AndroidManifest.xml, les ressources HD et MainActivity.kt.
+Projet Android complet.
 
-Ne copier aucun fichier séparément : remplacer/fusionner l'ensemble à la racine.
+V058 :
+- Page 1 Accueil réellement intégrée dans showHome().
+- Page 2 Médiathèque / Images réellement intégrée dans showMediaDashboard().
+- Navigation Images/Vidéos passe par la nouvelle page Médiathèque.
+- Retour depuis la grille vers la page Médiathèque.
+- Fonctions avancées existantes conservées : classement, suppression avec confirmation Android, partage, doublons SHA-256, paramètres.
+- Ressources visuelles HD conservées.
+- Tri automatique maintenu désactivé.
+
+Copier le CONTENU de ce ZIP à la racine du dépôt puis remplacer/fusionner les fichiers existants.
