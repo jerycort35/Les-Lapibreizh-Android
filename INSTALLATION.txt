@@ -1,0 +1,5 @@
+LES LAPIBREIZH — PAQUET MOBILE VERIFIE
+
+Le dossier github-workflows contient build-apk.yml volontairement sans dossier cache .github.
+Lors du transfert vers GitHub, build-apk.yml devra être placé dans .github/workflows/.
+Tous les autres fichiers conservent leur arborescence Android.
