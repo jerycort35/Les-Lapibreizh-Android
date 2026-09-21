@@ -685,7 +685,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     frame.addView(tick, FrameLayout.LayoutParams(dp(32), dp(32), Gravity.TOP or Gravity.END))
                 }
-                val columns = if (route == Route.VIDEOS) videoColumns else imageColumns
                 val cellPx = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1))
                 val requestedPx = when (columns) {
                     2 -> (cellPx * 1.8f).toInt().coerceAtLeast(720)
