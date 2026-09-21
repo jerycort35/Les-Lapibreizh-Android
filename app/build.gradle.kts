@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val privateKeyFile = System.getenv("LAPIBREIZH_KEYSTORE_PATH")
+val privateKeyPassword = System.getenv("LAPIBREIZH_KEYSTORE_PASSWORD")
+val hasPrivateSigning = !privateKeyFile.isNullOrBlank() && !privateKeyPassword.isNullOrBlank()
+
 android {
     namespace = "fr.leslapibreizh.mediatheque"
     compileSdk = 35
@@ -11,10 +15,26 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
 
+    signingConfigs {
+        if (hasPrivateSigning) {
+            create("lapibreizh") {
+                storeFile = file(privateKeyFile!!)
+                storePassword = privateKeyPassword
+                keyAlias = "lapibreizh"
+                keyPassword = privateKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasPrivateSigning) signingConfig = signingConfigs.getByName("lapibreizh")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

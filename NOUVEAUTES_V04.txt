@@ -1,0 +1,33 @@
+V0.4 — ÉTAT RÉEL (CODE SOURCE, TEST APPAREIL À VENIR)
+
+* Base exacte du code source V0.3 précédemment compilé et testé sur le téléphone.
+* Habillage noir/or avec visuels extraits des maquettes fournies : accueil et
+  deux lapins, bannières Images/Vidéos, illustrations des catégories, boutons dorés,
+  barre de navigation. Les nombres montrés dans les maquettes sont exclus des
+  illustrations intégrées ; les nombres de médias dans l'application sont calculés.
+* Un écran de catégories pour Images et Vidéos ; « Ouvrir toute la galerie » permet
+  l'accès direct à tous les médias. Les catégories restent un classement LOGIQUE
+  dans l'application : elles ne déplacent pas physiquement les photos.
+* Tri explicite : date récent/ancien, nom A-Z/Z-A, taille décroissante, type.
+  Critère courant affiché sur le bouton.
+* Favoris réellement enregistrés dans les préférences, accessibles par l'accueil
+  et la barre inférieure. Ajout/retrait en sélectionnant les médias, bouton ♥ Favoris.
+* Export JSON version 1 étendu avec les favoris, réimport compatible avec les
+  sauvegardes V0.3 (qui n'avaient pas encore de champ favoris).
+* Vraie signature privée de release via deux GitHub Actions Secrets : la clé
+  reste hors du dépôt et est réutilisable pour les futures versions.
+
+CONSERVÉ DU CODE V0.3 : MediaStore et miniatures, recherche, filtre captures,
+selection multiple, catégories créer/renommer/supprimer depuis Paramètres,
+classement, À classer, partage Android, copies vers dossier SAF avec préservation
+des originaux et vérification de taille, corbeille avec confirmation Android,
+doublons strictement identiques SHA-256 photos <=50 Mo, sauvegarde et import.
+
+PAS ENCORE IMPLÉMENTÉ : analyse visuelle intelligente des photos, suggestions
+automatiques fiables par reconnaissance du contenu, édition/montage vidéo,
+suppression définitive/effacement sécurisé, déplacement physique de 1000 fichiers,
+mode clair, effets animés. Les maquettes sont des références et non des preuves
+que ces fonctions existent. Aucun bouton inactif n'a été ajouté pour les simuler.
+
+L'application est un prototype fonctionnel en évolution ; V0.4 n'a pas encore été
+compilée et testée sur ton appareil au moment de la remise des sources.
