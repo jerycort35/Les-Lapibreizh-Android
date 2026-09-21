@@ -1,0 +1,32 @@
+name: Build V0.5.5 menus
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restaurer l'icône V0.5.3
+        run: |
+          mkdir -p app/src/main/res/drawable
+          git show fb5a62b650376825ee43498d99e79bd95c7420f1:app/src/main/res/drawable-nodpi/lapibreizh_icon.png > app/src/main/res/drawable/lapibreizh_icon.png
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Restaurer V0.5.3 et intégrer V0.5.5
+        run: python v055_restore_and_menus.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APK
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Les-Lapibreizh-V055
+          path: app/build/outputs/apk/debug/*.apk
