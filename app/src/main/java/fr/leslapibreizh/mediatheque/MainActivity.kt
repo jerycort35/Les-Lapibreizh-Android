@@ -27,8 +27,9 @@ import java.util.concurrent.Executors
 import java.security.MessageDigest
 
 /**
- * V0.2 : lecture seule des photos et videos MediaStore, classement logique dans
- * les preferences (aucun deplacement ou suppression des originaux).
+ * Application Les Lapibreizh, base fonctionnelle V058 conservée.
+ * Les fichiers originaux ne sont pas déplacés par le classement logique.
+ * Toute mise à la corbeille requiert une confirmation explicite.
  */
 class MainActivity : AppCompatActivity() {
     private val gold = Color.rgb(207, 174, 104)
@@ -57,8 +58,23 @@ class MainActivity : AppCompatActivity() {
     private var duplicateIndex = 0
     private val duplicateTrashSelection = linkedSetOf<String>()
     private var pendingTrashKeys = emptyList<String>()
+    private var screenMode = "home"
+    private var textSearch = ""
+    private var pendingCategory: String? = null
+    private var mediaSort = 0
+    private var thumbnailColumns = 3
+    private val canonicalCategories = listOf(
+        "Académie des Lapibreizh", "Fiches couleurs", "Fiches sportives", "Bricolage",
+        "Restaurant des Lapibreizh", "Voyages de Carnot", "Épisodes des Lapibreizh",
+        "Personnages", "Lapins réels")
+    private data class Hotspot(val x: Int, val y: Int, val w: Int, val h: Int,
+        val label: String, val click: () -> Unit)
+    private val artworkCategories = listOf(
+        "Académie des Lapibreizh", "Fiches couleurs", "Fiches sportives", "Bricolage",
+        "Restaurant des Lapibreizh", "Voyages de Carnot", "Épisodes des Lapibreizh",
+        "Personnages", "Lapins réels", "À classer")
 
-    private enum class Route { HOME, IMAGES, VIDEOS, UNSORTED, SETTINGS }
+    private enum class Route { HOME, IMAGES, VIDEOS, UNSORTED, FAVORITES, SETTINGS }
     private data class Media(
         val id: Long,
         val uri: Uri,
@@ -83,7 +99,7 @@ class MainActivity : AppCompatActivity() {
     private fun root(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(black)
-        setPadding(dp(14), dp(18), dp(14), dp(10))
+        setPadding(dp(12), dp(10), dp(12), dp(9))
     }
 
     private fun heading(text: String, size: Float = 23f) = TextView(this).apply {
@@ -107,7 +123,12 @@ class MainActivity : AppCompatActivity() {
         textSize = 13f
         isAllCaps = false
         setTextColor(cream)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(this@MainActivity.background)
+        backgroundTintList = null
+        background = GradientDrawable().apply {
+            cornerRadius = dp(13).toFloat()
+            setColor(Color.rgb(25, 23, 20))
+            setStroke(dp(1), gold)
+        }
         setOnClickListener { onClick() }
     }
 
@@ -127,12 +148,15 @@ class MainActivity : AppCompatActivity() {
             Triple("⌂\nAccueil", Route.HOME) { showHome() },
             Triple("▣\nImages", Route.IMAGES) { showMediaDashboard(Route.IMAGES) },
             Triple("▶\nVidéos", Route.VIDEOS) { showMediaDashboard(Route.VIDEOS) },
-            Triple("♡\nFavoris", Route.UNSORTED) { navigate(Route.UNSORTED) },
+            Triple("♡\nFavoris", Route.FAVORITES) { navigate(Route.FAVORITES) },
             Triple("⚙\nParamètres", Route.SETTINGS) { showSettings() }
         ).forEach { (label, r, click) ->
             val b=action(label, click).apply {
                 textSize=11f
-                if(r==active) backgroundTintList=android.content.res.ColorStateList.valueOf(Color.rgb(91,70,39))
+                if (r == active) background = GradientDrawable().apply {
+                    setColor(Color.rgb(91,70,39)); cornerRadius=dp(11).toFloat()
+                    setStroke(dp(2), gold)
+                }
             }
             addView(b, LinearLayout.LayoutParams(0, dp(64), 1f).apply { marginStart=dp(2); marginEnd=dp(2) })
         }
@@ -159,109 +183,206 @@ class MainActivity : AppCompatActivity() {
         setOnClickListener { onClick() }
     }
 
-    /**
-     * Écrans validés : l'illustration complète est la référence visuelle.
-     * Les zones transparentes ci-dessous ne modifient jamais son rendu : elles
-     * rendent simplement les boutons de la maquette réellement interactifs.
-     */
-    private data class Hotspot(
-        val left: Float, val top: Float, val right: Float, val bottom: Float,
-        val description: String, val click: () -> Unit
-    )
-
-    private fun exactUiScreen(resId: Int, imageWidth: Int, imageHeight: Int, hotspots: List<Hotspot>) {
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            setBackgroundColor(Color.BLACK)
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        val image = ImageView(this).apply {
-            setImageResource(resId)
+    /** Artwork stays pixel-identical to approved reference; only hit zones are transparent. */
+    private fun artworkScreen(resource: Int, artWidth: Int, artHeight: Int,
+                              hits: List<Hotspot>, counts: Boolean = false) {
+        val width = resources.displayMetrics.widthPixels
+        val height = (width.toFloat() * artHeight / artWidth).toInt()
+        val factor = width.toFloat() / artWidth
+        val frame = FrameLayout(this)
+        frame.addView(ImageView(this).apply {
+            setImageResource(resource)
             scaleType = ImageView.ScaleType.FIT_XY
-            contentDescription = "Interface Les Lapibreizh"
-        }
-        frame.addView(image, FrameLayout.LayoutParams(-1, -1))
-        scroll.addView(frame, ScrollView.LayoutParams(-1, -2))
-        setContentView(scroll)
-
-        frame.post {
-            val w = frame.width.coerceAtLeast(1)
-            val h = (w.toFloat() * imageHeight / imageWidth).toInt()
-            frame.layoutParams = frame.layoutParams.apply { height = h }
-            image.layoutParams = FrameLayout.LayoutParams(-1, h)
-            hotspots.forEach { spot ->
-                val touch = View(this).apply {
-                    isClickable = true
-                    isFocusable = true
-                    contentDescription = spot.description
-                    setBackgroundColor(Color.TRANSPARENT)
-                    setOnClickListener { spot.click() }
+            contentDescription = "Illustration Les Lapibreizh, commandes accessibles"
+        }, FrameLayout.LayoutParams(width, height))
+        // For image overview the printed sample counts are replaced by real local totals.
+        if (counts) {
+            val imageCatalog = resource == R.drawable.ui_images_exact
+            val positions = if (imageCatalog) listOf(
+                Triple(35, 544, 0), Triple(317, 544, 1), Triple(595, 544, 2),
+                Triple(35, 783, 3), Triple(317, 783, 4), Triple(595, 783, 5),
+                Triple(35, 1019, 6), Triple(317, 1019, 7), Triple(595, 1019, 8),
+                Triple(35, 1226, 9)) else listOf(
+                Triple(39, 864, 0), Triple(267, 864, 1),
+                Triple(485, 864, 2), Triple(709, 864, 3),
+                Triple(39, 1056, 4), Triple(267, 1056, 5),
+                Triple(485, 1056, 6), Triple(709, 1056, 7),
+                Triple(39, 1244, 8), Triple(267, 1244, 9))
+            val labels = positions.map { (x,y,_) ->
+                TextView(this).apply {
+                    text = "— média"
+                    textSize = 11f
+                    setTextColor(cream)
+                    setBackgroundColor(0xF0090807.toInt())
+                    setPadding(dp(2), 0, dp(2), 0)
+                }.also { label ->
+                    frame.addView(label, FrameLayout.LayoutParams(
+                        ((if (imageCatalog) 180 else 168) * factor).toInt(),
+                        ((if (imageCatalog) 26 else 29) * factor).toInt()).apply {
+                        leftMargin = (x * factor).toInt(); topMargin = (y * factor).toInt()
+                    })
                 }
-                val lp = FrameLayout.LayoutParams(
-                    ((spot.right - spot.left) * w).toInt().coerceAtLeast(1),
-                    ((spot.bottom - spot.top) * h).toInt().coerceAtLeast(1)
-                ).apply {
-                    leftMargin = (spot.left * w).toInt()
-                    topMargin = (spot.top * h).toInt()
-                }
-                frame.addView(touch, lp)
             }
+            if (hasPermission(Route.IMAGES)) io.execute {
+                val all = queryMedia(Route.IMAGES)
+                val grouped = all.groupingBy { getCategory(it) }.eachCount()
+                runOnUiThread {
+                    if (route == Route.IMAGES) labels.forEachIndexed { i, label ->
+                        val category = artworkCategories[i]
+                        label.text = "${if (category == "À classer") grouped[""] ?: 0 else grouped[category] ?: 0} image(s)"
+                    }
+                }
+            } else labels.forEach { it.text = "Accès requis" }
         }
+        hits.forEach { hit ->
+            val touch = View(this).apply {
+                isClickable = true
+                contentDescription = hit.label
+                setOnClickListener { hit.click() }
+            }
+            frame.addView(touch, FrameLayout.LayoutParams(
+                (hit.w * factor).toInt().coerceAtLeast(dp(30)),
+                (hit.h * factor).toInt().coerceAtLeast(dp(36))).apply {
+                leftMargin = (hit.x * factor).toInt()
+                topMargin = (hit.y * factor).toInt()
+            })
+        }
+        setContentView(ScrollView(this).apply {
+            isFillViewport = false
+            setBackgroundColor(black)
+            addView(frame, ScrollView.LayoutParams(width, height))
+        })
+    }
+
+    private fun hs(x: Int, y: Int, w: Int, h: Int, label: String,
+                   click: () -> Unit) = Hotspot(x, y, w, h, label, click)
+
+    private fun openSearch(kind: Route) {
+        val field = EditText(this).apply {
+            hint = "Rechercher par nom de fichier"
+            setSingleLine(true); setTextColor(Color.BLACK)
+            setText(textSearch)
+        }
+        AlertDialog.Builder(this).setTitle("Recherche des médias")
+            .setView(field)
+            .setPositiveButton("Rechercher") { _, _ ->
+                textSearch = field.text.toString().trim()
+                navigate(kind)
+            }
+            .setNeutralButton("Effacer") { _, _ -> textSearch = ""; navigate(kind) }
+            .setNegativeButton("Annuler", null).show()
+    }
+
+    private fun openGalleryCategory(category: String, kind: Route = Route.IMAGES) {
+        pendingCategory = if (category == "À classer") "" else category
+        navigate(if (category == "À classer") Route.UNSORTED else kind)
     }
 
     private fun showHome() {
+        generation++
+        screenMode = "home"
         route = Route.HOME
         selected.clear()
-        exactUiScreen(
-            R.drawable.ui_home_exact, 906, 1736,
-            listOf(
-                Hotspot(0.015f, 0.430f, 0.490f, 0.665f, "Images") { showMediaDashboard(Route.IMAGES) },
-                Hotspot(0.505f, 0.430f, 0.985f, 0.665f, "Montages vidéo") { showMediaDashboard(Route.VIDEOS) },
-                Hotspot(0.015f, 0.675f, 0.245f, 0.795f, "Retrouver une image ou vidéo") { showMediaDashboard(Route.IMAGES) },
-                Hotspot(0.255f, 0.675f, 0.490f, 0.795f, "À classer") { navigate(Route.UNSORTED) },
-                Hotspot(0.505f, 0.675f, 0.740f, 0.795f, "Renvoyer dans la galerie") { showMediaDashboard(Route.IMAGES) },
-                Hotspot(0.750f, 0.675f, 0.985f, 0.795f, "Paramètres") { showSettings() }
-            )
-        )
+        artworkScreen(R.drawable.ui_home_exact, 906, 1736, listOf(
+            hs(15,743,423,405,"Images") { showMediaDashboard(Route.IMAGES) },
+            hs(454,743,427,405,"Montages vidéo") { showVideosCategories() },
+            hs(16,1164,207,186,"Rechercher") { openSearch(Route.IMAGES) },
+            hs(237,1164,207,186,"À classer") { navigate(Route.UNSORTED) },
+            hs(455,1164,208,186,"Galerie") { navigate(Route.IMAGES) },
+            hs(674,1164,209,186,"Paramètres") { showSettings() }
+        ))
     }
 
     private fun showMediaDashboard(kind: Route) {
-        route = kind
+        generation++
+        screenMode = "dashboard"
+        route = Route.IMAGES
         selected.clear()
-        // La maquette validée est la page Médiathèque. Les actions gardent le moteur existant derrière.
-        exactUiScreen(
-            R.drawable.ui_media_exact, 941, 1672,
-            listOf(
-                Hotspot(0.020f, 0.202f, 0.760f, 0.240f, "Rechercher") { navigate(kind) },
-                Hotspot(0.770f, 0.202f, 0.985f, 0.240f, "Filtres") { navigate(kind) },
-                Hotspot(0.020f, 0.245f, 0.495f, 0.418f, "Images") { navigate(Route.IMAGES) },
-                Hotspot(0.505f, 0.245f, 0.985f, 0.418f, "Montages vidéo") { navigate(Route.VIDEOS) },
+        artworkScreen(R.drawable.ui_mediatheque_exact, 941, 1672, listOf(
+            hs(799,8,56,57,"Rechercher") { openSearch(Route.IMAGES) },
+            hs(864,8,53,57,"Paramètres et options") { showSettings() },
+            hs(22,342,695,59,"Rechercher une image") { openSearch(Route.IMAGES) },
+            hs(733,342,174,59,"Filtres") { openFilters() },
+            hs(22,411,440,289,"Images") { showImagesCategories() },
+            hs(473,411,434,289,"Montages vidéo") { showVideosCategories() },
+            hs(22,710,216,185,"Académie") { openGalleryCategory(artworkCategories[0]) },
+            hs(249,710,210,185,"Fiches couleurs") { openGalleryCategory(artworkCategories[1]) },
+            hs(471,710,210,185,"Fiches sportives") { openGalleryCategory(artworkCategories[2]) },
+            hs(692,710,216,185,"Bricolage") { openGalleryCategory(artworkCategories[3]) },
+            hs(22,906,216,185,"Restaurant") { openGalleryCategory(artworkCategories[4]) },
+            hs(249,906,210,185,"Voyages") { openGalleryCategory(artworkCategories[5]) },
+            hs(471,906,210,185,"Épisodes") { openGalleryCategory(artworkCategories[6]) },
+            hs(692,906,216,185,"Personnages") { openGalleryCategory(artworkCategories[7]) },
+            hs(22,1097,216,185,"Lapins réels") { openGalleryCategory(artworkCategories[8]) },
+            hs(249,1097,210,185,"À classer") { navigate(Route.UNSORTED) },
+            hs(22,1296,216,110,"Retrouver") { openSearch(Route.IMAGES) },
+            hs(249,1296,210,110,"Trier") { navigate(Route.IMAGES) },
+            hs(471,1296,210,110,"Voir la galerie") { navigate(Route.IMAGES) },
+            hs(692,1296,216,110,"Paramètres") { showSettings() },
+            hs(18,1421,190,127,"Accueil") { showHome() },
+            hs(209,1421,170,127,"Images") { showImagesCategories() },
+            hs(379,1421,188,127,"Vidéos") { showVideosCategories() },
+            hs(567,1421,183,127,"Favoris") { navigate(Route.FAVORITES) },
+            hs(750,1421,174,127,"Paramètres") { showSettings() }
+        ), counts = true)
+    }
 
-                Hotspot(0.020f, 0.425f, 0.250f, 0.535f, "Académie des Lapibreizh") { navigate(Route.IMAGES) },
-                Hotspot(0.260f, 0.425f, 0.495f, 0.535f, "Fiches couleurs") { navigate(Route.IMAGES) },
-                Hotspot(0.505f, 0.425f, 0.740f, 0.535f, "Fiches sportives") { navigate(Route.IMAGES) },
-                Hotspot(0.750f, 0.425f, 0.985f, 0.535f, "Bricolage") { navigate(Route.IMAGES) },
-                Hotspot(0.020f, 0.540f, 0.250f, 0.650f, "Restaurant des Lapibreizh") { navigate(Route.IMAGES) },
-                Hotspot(0.260f, 0.540f, 0.495f, 0.650f, "Voyages de Carnot") { navigate(Route.IMAGES) },
-                Hotspot(0.505f, 0.540f, 0.740f, 0.650f, "Épisodes des Lapibreizh") { navigate(Route.IMAGES) },
-                Hotspot(0.750f, 0.540f, 0.985f, 0.650f, "Personnages") { navigate(Route.IMAGES) },
-                Hotspot(0.020f, 0.655f, 0.250f, 0.765f, "Lapins réels") { navigate(Route.IMAGES) },
-                Hotspot(0.260f, 0.655f, 0.495f, 0.765f, "À classer") { navigate(Route.UNSORTED) },
-                Hotspot(0.505f, 0.655f, 0.985f, 0.765f, "Chaque image raconte une histoire") { navigate(kind) },
+    private fun showImagesCategories() {
+        generation++
+        screenMode = "images-catalog"
+        route = Route.IMAGES
+        selected.clear()
+        val hits = mutableListOf(
+            hs(15,8,140,68,"Retour") { showMediaDashboard(Route.IMAGES) },
+            hs(17,278,643,69,"Rechercher") { openSearch(Route.IMAGES) },
+            hs(670,278,180,69,"Filtres") { openFilters() })
+        val xs = listOf(17,299,578)
+        val ys = listOf(357,585,815)
+        artworkCategories.take(9).forEachIndexed { index, category ->
+            hits += hs(xs[index % 3], ys[index / 3], 270, 223, category) { openGalleryCategory(category) }
+        }
+        hits += hs(17,1055,269,204,"À classer") { navigate(Route.UNSORTED) }
+        hits += hs(17,1265,197,131,"Trier") { navigate(Route.IMAGES) }
+        hits += hs(226,1265,196,131,"Sélectionner") { navigate(Route.IMAGES) }
+        hits += hs(435,1265,195,131,"Classer") { navigate(Route.IMAGES) }
+        hits += hs(640,1265,208,131,"Galerie") { navigate(Route.IMAGES) }
+        hits += hs(16,1405,167,120,"Accueil") { showHome() }
+        hits += hs(183,1405,170,120,"Images") { navigate(Route.IMAGES) }
+        hits += hs(353,1405,170,120,"Vidéos") { showVideosCategories() }
+        hits += hs(523,1405,170,120,"Favoris") { navigate(Route.FAVORITES) }
+        hits += hs(693,1405,160,120,"Paramètres") { showSettings() }
+        artworkScreen(R.drawable.ui_images_exact,864,1536,hits,counts=true)
+    }
 
-                Hotspot(0.020f, 0.775f, 0.250f, 0.850f, "Retrouver") { navigate(kind) },
-                Hotspot(0.260f, 0.775f, 0.495f, 0.850f, "Trier") { navigate(kind) },
-                Hotspot(0.505f, 0.775f, 0.740f, 0.850f, "Renvoyer dans la galerie") { navigate(kind) },
-                Hotspot(0.750f, 0.775f, 0.985f, 0.850f, "Paramètres") { showSettings() },
+    private fun showVideosCategories() {
+        generation++
+        screenMode = "videos-catalog"
+        route = Route.VIDEOS
+        selected.clear()
+        val categories = listOf("Épisodes des Lapibreizh", "Fiches vertes", "Fiches bleues",
+            "Fiches orange", "Fiches rouges", "Fiches violettes", "Fiches bonus",
+            "Cueillette", "Restaurant des Lapibreizh", "Voyages de Carnot", "Bricolage",
+            "Fiches sportives", "Autres")
+        val hits = mutableListOf(hs(13,7,139,63,"Retour") { showMediaDashboard(Route.IMAGES) })
+        val xs = listOf(16,297,578); val ys = listOf(274,489,701,933)
+        categories.take(12).forEachIndexed { i, cat ->
+            hits += hs(xs[i % 3],ys[i / 3],271,208,cat) { openGalleryCategory(cat,Route.VIDEOS) }
+        }
+        hits += hs(15,1165,831,177,"Autres vidéos") { navigate(Route.VIDEOS) }
+        hits += hs(15,1356,167,173,"Accueil") { showHome() }
+        hits += hs(183,1356,170,173,"Images") { showImagesCategories() }
+        hits += hs(353,1356,170,173,"Vidéos") { navigate(Route.VIDEOS) }
+        hits += hs(523,1356,170,173,"Favoris") { navigate(Route.FAVORITES) }
+        hits += hs(693,1356,160,173,"Paramètres") { showSettings() }
+        artworkScreen(R.drawable.ui_videos_exact,864,1536,hits)
+    }
 
-                Hotspot(0.000f, 0.855f, 0.200f, 0.940f, "Accueil") { showHome() },
-                Hotspot(0.200f, 0.855f, 0.400f, 0.940f, "Images") { navigate(Route.IMAGES) },
-                Hotspot(0.400f, 0.855f, 0.600f, 0.940f, "Vidéos") { navigate(Route.VIDEOS) },
-                Hotspot(0.600f, 0.855f, 0.800f, 0.940f, "Favoris") { navigate(Route.UNSORTED) },
-                Hotspot(0.800f, 0.855f, 1.000f, 0.940f, "Paramètres") { showSettings() }
-            )
-        )
+    private fun openFilters() {
+        AlertDialog.Builder(this).setTitle("Filtres")
+            .setItems(arrayOf("Toutes mes images", "Tous mes montages vidéo", "Sans catégorie", "Favoris")) { _, i ->
+                when(i) { 0 -> navigate(Route.IMAGES); 1 -> navigate(Route.VIDEOS)
+                    2 -> navigate(Route.UNSORTED); else -> navigate(Route.FAVORITES) }
+            }.show()
     }
 
     private fun navigate(next: Route) {
@@ -286,7 +407,7 @@ class MainActivity : AppCompatActivity() {
         return when (target) {
             Route.IMAGES -> allowed(Manifest.permission.READ_MEDIA_IMAGES) || selectedAllowed
             Route.VIDEOS -> allowed(Manifest.permission.READ_MEDIA_VIDEO) || selectedAllowed
-            Route.UNSORTED -> allowed(Manifest.permission.READ_MEDIA_IMAGES) ||
+            Route.UNSORTED, Route.FAVORITES -> allowed(Manifest.permission.READ_MEDIA_IMAGES) ||
                 allowed(Manifest.permission.READ_MEDIA_VIDEO) || selectedAllowed
             else -> true
         }
@@ -311,36 +432,77 @@ class MainActivity : AppCompatActivity() {
         route = next
         selected.clear()
         albumFilter = null
-        categoryFilter = null
+        categoryFilter = pendingCategory
+        pendingCategory = null
         visibleLimit = 120
         loadGallery()
     }
 
     private fun loadGallery() {
+        screenMode = "gallery"
         val requestNumber = ++generation
         val layout = root()
         val title = when (route) {
             Route.IMAGES -> "MES IMAGES"
             Route.VIDEOS -> "MONTAGES VIDÉO — EDITS"
+            Route.FAVORITES -> "MES FAVORIS"
             else -> "À CLASSER"
         }
+        layout.addView(hero(if (route == Route.VIDEOS) R.drawable.art_gallery_videos
+            else R.drawable.art_gallery_images, 125),
+            LinearLayout.LayoutParams(-1, dp(125)))
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         toolbar.addView(action("‹ Retour") {
-            if (route == Route.IMAGES || route == Route.VIDEOS) showMediaDashboard(route) else showHome()
+            if (route == Route.IMAGES) showImagesCategories()
+            else if (route == Route.VIDEOS) showVideosCategories() else showMediaDashboard(Route.IMAGES)
         }, LinearLayout.LayoutParams(dp(100), dp(48)))
         toolbar.addView(heading(title, 18f), LinearLayout.LayoutParams(0, dp(48), 1f))
         layout.addView(toolbar)
         val info = note("Chargement des médias…")
         selectionInfo = info
         layout.addView(info)
+        val search = EditText(this).apply {
+            hint = "⌕  Rechercher une image ou vidéo…"
+            setSingleLine(true)
+            setText(textSearch)
+            textSize = 15f
+            setTextColor(cream)
+            setHintTextColor(gold)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(29, 27, 23)); cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), gold)
+            }
+            setPadding(dp(15), dp(8), dp(10), dp(8))
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    textSearch = s?.toString() ?: ""
+                    updateItems()
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        layout.addView(search, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            bottomMargin = dp(7)
+        })
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         filters.addView(action("Albums") { chooseAlbum() }, LinearLayout.LayoutParams(0, dp(50), 1f))
         filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
         filters.addView(action("Trier") {
-            sortedNewestFirst = !sortedNewestFirst
-            updateItems()
+            AlertDialog.Builder(this).setTitle("Trier par")
+                .setSingleChoiceItems(arrayOf("Date récente", "Date ancienne", "Nom", "Type", "Taille"),mediaSort) { dialog, index ->
+                    mediaSort = index; updateItems(); dialog.dismiss()
+                }.setNegativeButton("Annuler",null).show()
         }, LinearLayout.LayoutParams(0, dp(50), 1f))
         layout.addView(filters)
+        val displayOptions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        displayOptions.addView(action("Petites") { thumbnailColumns=4; grid?.numColumns=4; galleryAdapter?.notifyDataSetChanged() },
+            LinearLayout.LayoutParams(0, dp(41), 1f))
+        displayOptions.addView(action("Moyennes") { thumbnailColumns=3; grid?.numColumns=3; galleryAdapter?.notifyDataSetChanged() },
+            LinearLayout.LayoutParams(0, dp(41), 1f))
+        displayOptions.addView(action("Grandes") { thumbnailColumns=2; grid?.numColumns=2; galleryAdapter?.notifyDataSetChanged() },
+            LinearLayout.LayoutParams(0, dp(41), 1f))
+        layout.addView(displayOptions)
         selectionActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
@@ -348,11 +510,12 @@ class MainActivity : AppCompatActivity() {
             actions.addView(action("Classer") { showMoveSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
             actions.addView(action("Supprimer") { showDeleteSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
             actions.addView(action("Partager") { shareSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
+            actions.addView(action("Favoris ♡") { toggleFavoritesSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
             actions.addView(action("Annuler") { selected.clear(); updateSelection() }, LinearLayout.LayoutParams(0, dp(49), 1f))
             layout.addView(actions)
         }
         val g = GridView(this).apply {
-            numColumns = 3
+            numColumns = thumbnailColumns
             horizontalSpacing = dp(5)
             verticalSpacing = dp(5)
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
@@ -372,7 +535,8 @@ class MainActivity : AppCompatActivity() {
                     setBackgroundColor(this@MainActivity.background)
                     tag = media.key
                 }
-                frame.addView(image, FrameLayout.LayoutParams(-1, dp(122)))
+                frame.addView(image, FrameLayout.LayoutParams(-1,
+                    dp(if (thumbnailColumns == 2) 170 else if (thumbnailColumns == 4) 95 else 122)))
                 val caption = TextView(this@MainActivity).apply {
                     text = (if (media.mime.startsWith("video/")) "▶ " else "") + media.title
                     textSize = 10f
@@ -383,6 +547,12 @@ class MainActivity : AppCompatActivity() {
                     setPadding(dp(3), dp(3), dp(3), dp(3))
                 }
                 frame.addView(caption, FrameLayout.LayoutParams(-1, dp(25), Gravity.BOTTOM))
+                if (prefs.getBoolean("favorite_${media.key}", false)) {
+                    frame.addView(TextView(this@MainActivity).apply {
+                        text = "♥"; textSize = 20f; setTextColor(gold)
+                        setBackgroundColor(0xAA080705.toInt())
+                    }, FrameLayout.LayoutParams(dp(26),dp(26),Gravity.TOP or Gravity.START))
+                }
                 if (selected.contains(media.key)) {
                     val tick = TextView(this@MainActivity).apply {
                         text = "✓"
@@ -408,13 +578,17 @@ class MainActivity : AppCompatActivity() {
         g.setOnItemClickListener { _, _, position, _ ->
             val media = shownItems[position]
             if (selected.isEmpty()) openMedia(media) else {
-                if (!selected.add(media.key)) selected.remove(media.key)
+                if (selected.contains(media.key)) selected.remove(media.key)
+                else if (selected.size < 100) selected.add(media.key)
+                else Toast.makeText(this,"100 éléments maximum",Toast.LENGTH_SHORT).show()
                 updateSelection()
             }
         }
         g.setOnItemLongClickListener { _, _, position, _ ->
             val key = shownItems[position].key
-            if (!selected.add(key)) selected.remove(key)
+            if (selected.contains(key)) selected.remove(key)
+            else if (selected.size < 100) selected.add(key)
+            else Toast.makeText(this,"100 éléments maximum",Toast.LENGTH_SHORT).show()
             updateSelection()
             true
         }
@@ -426,6 +600,7 @@ class MainActivity : AppCompatActivity() {
         }
         more.tag = "more"
         layout.addView(more, LinearLayout.LayoutParams(-1, dp(45)))
+        layout.addView(navBar(route))
         setContentView(layout)
         val queriedRoute = route
         io.execute {
@@ -473,7 +648,11 @@ class MainActivity : AppCompatActivity() {
             } catch (_: SecurityException) { /* Media permissions can be changed in Settings. */ }
             catch (_: Exception) { /* Remain usable if a media provider is unavailable. */ }
         }
-        return if (target == Route.UNSORTED) result.filter { getCategory(it).isEmpty() } else result
+        return when (target) {
+            Route.UNSORTED -> result.filter { getCategory(it).isEmpty() }
+            Route.FAVORITES -> result.filter { prefs.getBoolean("favorite_${it.key}",false) }
+            else -> result
+        }
     }
 
     private fun thumbnail(media: Media): Bitmap? {
@@ -493,10 +672,17 @@ class MainActivity : AppCompatActivity() {
         val filtered = galleryItems.filter { media ->
             (albumFilter == null || media.album == albumFilter) &&
                 (categoryFilter == null || getCategory(media) == categoryFilter) &&
-                (route != Route.UNSORTED || getCategory(media).isEmpty())
+                (route != Route.UNSORTED || getCategory(media).isEmpty()) &&
+                (route != Route.FAVORITES || prefs.getBoolean("favorite_${media.key}", false)) &&
+                (textSearch.isBlank() || media.title.contains(textSearch,ignoreCase=true))
         }
-        shownItems = if (sortedNewestFirst) filtered.sortedByDescending { it.date }
-            else filtered.sortedBy { it.title.lowercase() }
+        shownItems = when (mediaSort) {
+            1 -> filtered.sortedBy { it.date }
+            2 -> filtered.sortedBy { it.title.lowercase() }
+            3 -> filtered.sortedBy { it.mime }
+            4 -> filtered.sortedByDescending { it.size }
+            else -> filtered.sortedByDescending { it.date }
+        }
         galleryAdapter?.notifyDataSetChanged()
         refreshInfo()
         (grid?.parent as? LinearLayout)?.findViewWithTag<Button>("more")?.visibility =
@@ -536,7 +722,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun savedCategories(): List<String> {
         val raw = prefs.getString("category_names", null)
-        return if (raw == null) listOf("Académie", "Restaurant", "Sport", "Bricolage", "Voyages")
+        return if (raw == null) canonicalCategories + listOf("Fiches vertes", "Fiches bleues", "Fiches orange",
+            "Fiches rouges", "Fiches violettes", "Fiches bonus", "Cueillette", "Autres")
             else raw.split('\u001f').filter { it.isNotBlank() }
     }
 
@@ -565,6 +752,19 @@ class MainActivity : AppCompatActivity() {
         try { startActivity(intent) } catch (_: Exception) {
             Toast.makeText(this, "Aucune application disponible pour ouvrir ce média", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun toggleFavoritesSelected() {
+        val keys = selected.toList()
+        if (keys.isEmpty()) return
+        val allFavorite = keys.all { prefs.getBoolean("favorite_$it",false) }
+        val edit = prefs.edit()
+        keys.forEach { edit.putBoolean("favorite_$it", !allFavorite) }
+        edit.apply()
+        selected.clear()
+        updateSelection()
+        updateItems()
+        Toast.makeText(this, if (allFavorite) "Favoris retirés" else "Ajoutés aux favoris", Toast.LENGTH_SHORT).show()
     }
 
     private fun shareSelected() {
@@ -614,6 +814,8 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun showSettings() {
+        generation++
+        screenMode = "settings"
         route = Route.SETTINGS
         selected.clear()
         val layout = root()
@@ -621,6 +823,7 @@ class MainActivity : AppCompatActivity() {
         top.addView(action("‹ Retour") { showHome() }, LinearLayout.LayoutParams(dp(105), dp(48)))
         top.addView(heading("⚙  PARAMÈTRES", 20f), LinearLayout.LayoutParams(0, dp(52), 1f))
         layout.addView(top)
+        layout.addView(hero(R.drawable.art_settings_header,83), LinearLayout.LayoutParams(-1,dp(83)))
         layout.addView(note("Tout personnaliser, à ta façon"))
 
         val general = section("GÉNÉRAL")
@@ -689,6 +892,7 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton("Fermer", null).show()
         })
         layout.addView(other)
+        layout.addView(hero(R.drawable.art_footer_bretagne,140), LinearLayout.LayoutParams(-1,dp(140)))
         layout.addView(note("Les Lapibreizh · Nos souvenirs, notre histoire"))
         setContentView(ScrollView(this).apply { addView(layout) })
     }
@@ -708,12 +912,26 @@ class MainActivity : AppCompatActivity() {
             }.setNegativeButton("Annuler", null).show()
     }
 
+    private fun categoryArtwork(category: String): Int = when {
+        category.contains("sport",true) -> R.drawable.art_bombarde
+        category.contains("Restaurant",true) -> R.drawable.art_carnot
+        category.contains("Voyage",true) -> R.drawable.art_cookie
+        category.contains("Académie",true) -> R.drawable.art_quiberon
+        category.contains("couleur",true) -> R.drawable.art_neige
+        category.contains("Personnage",true) -> R.drawable.art_chocapic
+        category.contains("Lapins réel",true) -> R.drawable.art_rabbits
+        else -> R.drawable.art_edit_category
+    }
+
     private fun showCategoryEditor(category: String) {
+        screenMode = "editor"
         val layout = root()
         layout.addView(action("‹ Retour aux paramètres") { showSettings() })
+        layout.addView(hero(R.drawable.art_settings_header,90),LinearLayout.LayoutParams(-1,dp(90)))
         layout.addView(heading("MODIFIER UNE CATÉGORIE"))
         layout.addView(note("Personnalise ta catégorie"))
         layout.addView(heading(category, 19f))
+        layout.addView(hero(categoryArtwork(category),145), LinearLayout.LayoutParams(-1,dp(145)))
         val name = EditText(this).apply {
             setText(category); setTextColor(cream); setSingleLine(true)
             hint = "Nom de la catégorie"; setHintTextColor(0xFFAAAAAA.toInt())
@@ -750,6 +968,7 @@ class MainActivity : AppCompatActivity() {
         prefs.all.count { (k, v) -> k.startsWith("media_") && v == category }
 
     private fun showAlbumImport() {
+        screenMode = "import"
         if (!hasPermission(Route.UNSORTED)) {
             Toast.makeText(this, "Autorise d’abord l’accès aux photos/vidéos depuis la galerie.", Toast.LENGTH_LONG).show()
             navigate(Route.UNSORTED)
@@ -757,8 +976,9 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = root()
         layout.addView(action("‹ Retour") { showSettings() })
+        layout.addView(hero(R.drawable.art_import_rabbits,155), LinearLayout.LayoutParams(-1,dp(155)))
         layout.addView(heading("IMPORT DES ALBUMS EXISTANTS"))
-        layout.addView(note("Sélectionne un album puis sa catégorie. Les originaux restent à leur emplacement."))
+        layout.addView(note("Choisis un album et une catégorie. Aucun doublon physique n’est créé et les originaux restent sur le téléphone."))
         val info = note("Recherche des albums…")
         layout.addView(info)
         setContentView(ScrollView(this).apply { addView(layout) })
@@ -783,6 +1003,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun mediaArtwork(media: Media, h: Int): ImageView {
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(this@MainActivity.background)
+            contentDescription = media.title
+            tag = media.key
+        }
+        val cached = bitmapCache.get(media.key)
+        if (cached != null) image.setImageBitmap(cached)
+        else io.execute {
+            val bmp = try { thumbnail(media) } catch (_: Exception) { null }
+            if (bmp != null) {
+                bitmapCache.put(media.key,bmp)
+                image.post { if (image.tag == media.key) image.setImageBitmap(bmp) }
+            }
+        }
+        return image
+    }
+
+    private fun mediaPreviewStrip(medias: List<Media>): LinearLayout =
+        LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            medias.take(4).forEach { media ->
+                addView(mediaArtwork(media,85),LinearLayout.LayoutParams(0,dp(85),1f).apply {
+                    marginStart=dp(2); marginEnd=dp(2)
+                })
+            }
+            if (medias.size > 4) addView(note("+${medias.size-4}"),
+                LinearLayout.LayoutParams(0,dp(85),1f))
+        }
+
     private fun showMoveSelected() {
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
@@ -795,8 +1046,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMoveProgress(medias: List<Media>, destination: String) {
+        screenMode = "progress"
         val layout = root()
-        layout.addView(heading("DÉPLACEMENT EN COURS"))
+        layout.addView(hero(R.drawable.art_settings_header,80),LinearLayout.LayoutParams(-1,dp(80)))
+        layout.addView(heading("CLASSEMENT EN COURS"))
+        layout.addView(mediaPreviewStrip(medias))
         val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = medias.size }
         val txt = note("0 / ${medias.size}")
         layout.addView(progress, LinearLayout.LayoutParams(-1, dp(24)))
@@ -815,30 +1069,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMoveResult(count: Int, destination: String) {
+        screenMode = "result"
         selected.clear()
         val layout = root()
-        layout.addView(heading("DÉPLACEMENT TERMINÉ"))
+        layout.addView(heading("CLASSEMENT TERMINÉ"))
         layout.addView(heading("✓", 48f))
         layout.addView(note("$count média(s) classé(s) dans « $destination »"))
-        layout.addView(note("Les fichiers originaux n’ont pas été déplacés ni supprimés."))
+        layout.addView(note("Classement Lapibreizh enregistré. Les originaux sont restés à leur emplacement."))
         layout.addView(action("Retour à la galerie") { loadGallery() })
         layout.addView(action("Accueil") { showHome() })
+        layout.addView(hero(R.drawable.art_footer_bretagne,135),LinearLayout.LayoutParams(-1,dp(135)))
         setContentView(layout)
     }
 
     private fun showDeleteSelected() {
+        screenMode = "delete"
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
         val total = medias.sumOf { it.size }
         val layout = root()
+        layout.addView(hero(R.drawable.art_settings_header,75),LinearLayout.LayoutParams(-1,dp(75)))
         layout.addView(action("‹ Retour") { loadGallery() })
         layout.addView(heading("SUPPRIMER DES IMAGES"))
         layout.addView(note("${medias.size} élément(s) sélectionné(s)  ·  ${formatBytes(total)}"))
-        layout.addView(note("Cette action demande la confirmation d’Android. Sur les versions récentes, les médias sont placés dans la corbeille système."))
-        medias.take(5).forEach { layout.addView(note("• ${it.title}")) }
-        if (medias.size > 5) layout.addView(note("+ ${medias.size - 5} autre(s)"))
-        layout.addView(action("Mettre à la corbeille") { requestTrash(medias) })
+        layout.addView(note(if (Build.VERSION.SDK_INT >= 30)
+            "Android demandera confirmation avant de placer ces fichiers dans la corbeille système."
+            else "Sur cette version d’Android, la suppression peut être définitive. Vérifie ta sélection."))
+        layout.addView(mediaPreviewStrip(medias))
+        layout.addView(note("Sélection : ${medias.take(4).joinToString { it.title }}"))
+        val warning = section("ATTENTION", if (Build.VERSION.SDK_INT >= 30)
+            "La corbeille Android permet généralement une restauration temporaire. Ce n’est pas un effacement sécurisé."
+            else "Sur Android 8–10, la suppression des médias peut être définitive.")
+        layout.addView(warning)
+        val confirmed = CheckBox(this).apply {
+            text = "Je confirme le traitement de ces ${medias.size} fichiers"
+            setTextColor(cream)
+        }
+        layout.addView(confirmed)
+        layout.addView(action(if (Build.VERSION.SDK_INT >= 30) "Mettre à la corbeille" else "Supprimer définitivement") {
+            if (confirmed.isChecked) requestTrash(medias)
+            else Toast.makeText(this,"Confirme d’abord ta sélection",Toast.LENGTH_SHORT).show()
+        })
         layout.addView(action("Annuler") { loadGallery() })
+        layout.addView(hero(R.drawable.art_footer_bretagne,135), LinearLayout.LayoutParams(-1,dp(135)))
         setContentView(ScrollView(this).apply { addView(layout) })
     }
 
@@ -887,7 +1160,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(info)
         setContentView(layout)
         io.execute {
-            val all = queryMedia(Route.UNSORTED)
+            val all = (queryMedia(Route.IMAGES) + queryMedia(Route.VIDEOS))
+                .groupBy { it.size }.values.filter { it.size > 1 }.flatten()
             val groups = linkedMapOf<String, MutableList<Media>>()
             all.forEachIndexed { index, media ->
                 val hash = sha256(media)
@@ -926,10 +1200,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDuplicateComparison() {
+        screenMode = "duplicate"
         if (duplicatePairs.isEmpty()) { showSettings(); return }
         duplicateIndex = duplicateIndex.coerceIn(0, duplicatePairs.lastIndex)
         val (existing, candidate) = duplicatePairs[duplicateIndex]
         val layout = root()
+        layout.addView(hero(R.drawable.art_settings_header,80),LinearLayout.LayoutParams(-1,dp(80)))
         layout.addView(action("‹ Retour") { showSettings() })
         layout.addView(heading("DOUBLON DÉTECTÉ"))
         layout.addView(note("${duplicateIndex + 1} sur ${duplicatePairs.size}"))
@@ -966,6 +1242,7 @@ class MainActivity : AppCompatActivity() {
         nav.addView(action("Suivant") { nextDuplicate() }, LinearLayout.LayoutParams(0, dp(50), 1f))
         layout.addView(nav)
         layout.addView(action("Terminer") { finishDuplicateSession() })
+        layout.addView(hero(R.drawable.art_footer_bretagne,125),LinearLayout.LayoutParams(-1,dp(125)))
         setContentView(ScrollView(this).apply { addView(layout) })
     }
 
@@ -1012,7 +1289,15 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Used to support navigation on Android 8-12")
     override fun onBackPressed() {
-        if (route == Route.HOME) super.onBackPressed() else showHome()
+        when(screenMode) {
+            "home" -> super.onBackPressed()
+            "dashboard" -> showHome()
+            "images-catalog", "videos-catalog" -> showMediaDashboard(Route.IMAGES)
+            "gallery" -> if (route == Route.VIDEOS) showVideosCategories() else showImagesCategories()
+            "import", "editor", "duplicate" -> showSettings()
+            "delete", "progress", "result" -> loadGallery()
+            else -> showHome()
+        }
     }
 
     override fun onDestroy() {

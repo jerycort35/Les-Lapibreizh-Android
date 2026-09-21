@@ -1,0 +1,8 @@
+Ces huit fichiers sont les maquettes originales transmises par l'utilisateur :
+galerie Images, galerie Vidéos, import d'albums, progression, doublons,
+suppression, paramètres et édition de catégorie.
+Ils ne sont PAS des données de l'utilisateur dans l'application : leurs valeurs
+chiffrées sont fictives et ne doivent pas remplacer les données MediaStore.
+Des éléments graphiques recadrés de ces fichiers sont intégrés dans les pages
+fonctionnelles correspondantes. Les fichiers sont conservés sans modification
+pour les retouches visuelles futures.

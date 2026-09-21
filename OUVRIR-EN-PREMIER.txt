@@ -1,0 +1,7 @@
+NE COMPTE PAS SEULEMENT LES ÉLÉMENTS À LA RACINE DU ZIP.
+
+Le dossier app contient src/main/java et src/main/res avec le code et les visuels.
+Le dossier REFERENCES_VISUELLES contient les autres maquettes d'origine.
+Le dossier .github/workflows contient le workflow (invisible si Android masque les dossiers commençant par un point).
+
+Lis CONTROLE_EXTRACTION.txt pour la liste de tous les fichiers, même imbriqués.

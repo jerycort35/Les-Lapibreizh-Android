@@ -1,11 +1,49 @@
-LES LAPIBREIZH — V059 — 2 ÉCRANS VALIDÉS EXACTS
+LES LAPIBREIZH — LA MÉDIATHÈQUE — V062 (PROJET SOURCE)
 
-Cette version utilise directement les deux maquettes validées comme rendu visuel :
-- Accueil : ui_home_exact.png
-- Médiathèque / Images : ui_media_exact.png
+BASE : V058 (version dont l'utilisateur a confirmé le fonctionnement).
+Application ID et préférences existantes conservés.
 
-Des zones tactiles transparentes sont superposées aux boutons de la maquette afin de conserver exactement l'apparence validée tout en ouvrant les fonctions existantes de l'application.
+CONTENU : projet Gradle Android, MainActivity Kotlin, Manifest, ressources PNG/WEBP,
+workflow GitHub Actions, 8 maquettes de référence supplémentaires.
 
-Le moteur existant (MediaStore, galerie, classement, partage, doublons SHA-256, paramètres et confirmations Android) est conservé.
+VISUELS INTÉGRÉS :
+- Accueil, aperçu Médiathèque, catégories Images et catégories Vidéos :
+  fichiers PNG exacts, copiés sans recompression depuis les visuels fournis.
+  Zones tactiles transparentes reliées à la navigation réelle.
+- Galeries et autres pages : en-têtes et illustrations tirés des références ;
+  contenu vivant en composants Android noir/or (photos, vidéos, compteurs,
+  paramètres, cases de sélection, confirmations, résultats). Les maquettes
+  supplémentaires restent dans REFERENCES_VISUELLES pour la suite.
+- Les compteurs fictifs des maquettes Images/Médiathèque sont recouverts au
+  démarrage par les nombres issus de la bibliothèque locale (ou « Accès requis »).
+- Les miniatures réelles du téléphone ne sont jamais remplacées par des photos
+  d'exemple. Images et vidéos restent accessibles sur l'appareil.
 
-Version Android : 0.5.9 (versionCode 13)
+FONCTIONS : lecture MediaStore, permissions Android, recherche par nom, filtrage
+par album/catégorie, tris, tailles de miniatures, sélection (100 maximum),
+classement logique sans modification des originaux, partage via applications,
+favoris, corbeille Android avec confirmation, comparaison de doublons SHA-256,
+création/modification/suppression des catégories, import logique d'albums,
+statistiques stockage, suppression cache et réinitialisation confirmée.
+
+IMPORTANT : le « déplacement » dans l'app réattribue une catégorie : ce n'est
+PAS un déplacement physique. L'import ne copie pas les fichiers. Pas d'éditeur
+vidéo intégré. Tri automatique indisponible et désactivé pour éviter toute action
+surprise. Les images de référence d'autres écrans restent des maquettes ; leurs
+valeurs/chiffres d'exemple ne sont pas des données réelles.
+
+BUILD : GitHub Actions installe Gradle 8.7 et construit assembleDebug. Un APK
+release signé est construit uniquement si les secrets de signature existants
+LAPIBREIZH_KEYSTORE_B64 et LAPIBREIZH_KEYSTORE_PASSWORD sont configurés.
+Aucun Gradle Wrapper incomplet inclus : le workflow utilise la commande gradle.
+
+POUR INSTALLER LE PROJET : extraire le ZIP puis remplacer le contenu du dépôt
+GitHub existant par l'ARBORESCENCE du projet. Le dossier app contient lui-même
+plusieurs sous-dossiers ; le nombre de dossiers visibles à la racine n'est PAS
+le nombre de fichiers. Le workflow se trouve dans .github/workflows/, dossier
+commençant par un point qui peut être masqué sur Android.
+
+VÉRIFICATION : voir CONTROLE_EXTRACTION.txt pour l'inventaire récursif et les
+SHA-256. Contrôle statique des fichiers effectué, MAIS aucune compilation APK
+ni test sur appareil n'a pu être réalisée dans l'environnement de fabrication.
+L'état final de compilation devra être confirmé par GitHub Actions.
