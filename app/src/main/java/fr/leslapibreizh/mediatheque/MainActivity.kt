@@ -250,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(ScrollView(this).apply {
             isFillViewport = false
             setBackgroundColor(black)
-            addView(frame, ScrollView.LayoutParams(width, height))
+            addView(frame, FrameLayout.LayoutParams(width, height))
         })
     }
 
