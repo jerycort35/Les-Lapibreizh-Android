@@ -1,0 +1,46 @@
+name: Build Android APK - RELEASE 0.6.8
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Restore permanent signing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.LAPIBREIZH_KEYSTORE_B64 }}
+        run: |
+          test -n "$KEYSTORE_B64"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/lapibreizh-release.jks"
+          test -s "$RUNNER_TEMP/lapibreizh-release.jks"
+
+      - name: Build signed RELEASE APK
+        env:
+          LAPIBREIZH_KEYSTORE_PATH: ${{ runner.temp }}/lapibreizh-release.jks
+          LAPIBREIZH_KEYSTORE_PASSWORD: ${{ secrets.LAPIBREIZH_KEYSTORE_PASSWORD }}
+        run: gradle assembleRelease
+
+      - name: Upload RELEASE APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Les-Lapibreizh-0.6.8-RELEASE-SIGNEE
+          path: app/build/outputs/apk/release/app-release.apk

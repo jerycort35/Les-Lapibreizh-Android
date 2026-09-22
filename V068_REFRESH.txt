@@ -1,4 +1,4 @@
-Les Lapibreizh — V0.6.8 refresh
-Ce fichier sert uniquement à forcer Git à détecter une différence dans le projet.
-Build attendu : RELEASE signée avec la clé permanente.
-APK attendue : app-release.apk.
+Les Lapibreizh — V0.6.8 FINAL RELEASE SIGNEE
+Workflow attendu : Build Android APK - RELEASE 0.6.8
+Commande attendue : gradle assembleRelease
+APK attendue : app-release.apk
