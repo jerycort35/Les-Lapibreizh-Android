@@ -579,7 +579,7 @@ class MainActivity : AppCompatActivity() {
         val g = GridView(this).apply {
             numColumns = thumbnailColumns
             horizontalSpacing = dp(5)
-            verticalSpacing = dp(5)
+            verticalSpacing = dp(9)
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
             setBackgroundColor(black)
             setPadding(0, dp(7), 0, dp(7))
@@ -596,7 +596,7 @@ class MainActivity : AppCompatActivity() {
                 val cardWidth = availableWidth / thumbnailColumns
                 val portraitHeight = (cardWidth * 16f / 9f).toInt().coerceAtMost(dp(520))
                 val frame = FrameLayout(this@MainActivity).apply {
-                    layoutParams = AbsListView.LayoutParams(-1, portraitHeight + dp(44))
+                    layoutParams = AbsListView.LayoutParams(-1, portraitHeight + dp(52))
                 }
                 val image = ImageView(this@MainActivity).apply {
                     scaleType = ImageView.ScaleType.FIT_CENTER
@@ -606,7 +606,7 @@ class MainActivity : AppCompatActivity() {
                 frame.addView(image, FrameLayout.LayoutParams(-1, portraitHeight, Gravity.TOP))
                 val caption = TextView(this@MainActivity).apply {
                     text = (if (media.mime.startsWith("video/")) "▶ " else "") + media.title
-                    textSize = 11f
+                    textSize = 13f
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setTextColor(cream)
@@ -614,7 +614,7 @@ class MainActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(4), dp(2), dp(4), dp(2))
                 }
-                frame.addView(caption, FrameLayout.LayoutParams(-1, dp(44), Gravity.BOTTOM))
+                frame.addView(caption, FrameLayout.LayoutParams(-1, dp(52), Gravity.BOTTOM))
                 if (prefs.getBoolean("favorite_${media.key}", false)) {
                     frame.addView(TextView(this@MainActivity).apply {
                         text = "♥"; textSize = 20f; setTextColor(gold)
@@ -938,79 +938,95 @@ class MainActivity : AppCompatActivity() {
         screenMode = "settings"
         route = Route.SETTINGS
         selected.clear()
-        val layout = root()
-        layout.addView(settingsHeader { showHome() })
-        layout.addView(note("Tout personnaliser, à ta façon"))
 
-        val general = section("GÉNÉRAL")
+        val layout = root().apply { setPadding(dp(10), dp(8), dp(10), dp(10)) }
+        layout.addView(settingsHeader { showHome() })
+        layout.addView(visualTitle("⚙", "PARAMÈTRES", "Tout personnaliser, à ta façon"))
+
+        val general = section("⚙  GÉNÉRAL", "Personnalise l’apparence et le fonctionnement de l’application")
         general.addView(note("Thème"))
         val themes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        themes.addView(action("Clair") { Toast.makeText(this, "Le thème noir & or reste la référence actuelle.", Toast.LENGTH_SHORT).show() },
-            LinearLayout.LayoutParams(0, dp(46), 1f))
-        themes.addView(action("● Sombre") { prefs.edit().putString("theme", "dark").apply() },
-            LinearLayout.LayoutParams(0, dp(46), 1f))
-        themes.addView(action("Système") { Toast.makeText(this, "Le thème système sera finalisé avec l'automatisation.", Toast.LENGTH_SHORT).show() },
-            LinearLayout.LayoutParams(0, dp(46), 1f))
+        themes.addView(action("☀  Clair") {
+            Toast.makeText(this, "Le thème noir & or reste la référence actuelle.", Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(3) })
+        themes.addView(primaryAction("☾  Sombre") {
+            prefs.edit().putString("theme", "dark").apply()
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
+        themes.addView(action("◉  Système") {
+            Toast.makeText(this, "Le thème système sera finalisé ultérieurement.", Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(3) })
         general.addView(themes)
-        general.addView(note("Langue  ·  Français"))
-        general.addView(switchRow("Son et vibrations", "vibrations"))
-        general.addView(switchRow("Animations", "animations"))
+        general.addView(note("🌐  Langue   ·   Français"))
+        general.addView(switchRow("🔔  Son et vibrations", "vibrations"))
+        general.addView(switchRow("★  Animations", "animations"))
         layout.addView(general, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val imports = section("IMPORT DES ALBUMS EXISTANTS",
-            "Retrouve les albums du téléphone et classe-les sans modifier les originaux.")
-        imports.addView(action("Importer depuis la galerie") { navigate(Route.IMAGES) })
-        imports.addView(action("Importer tous les albums") { showAlbumImport() })
+        val imports = section("▣  IMPORT DES ALBUMS EXISTANTS",
+            "Ajoute tes photos et vidéos déjà présentes sur ton téléphone")
+        val importButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        importButtons.addView(action("▣\nImporter depuis\nla galerie") { navigate(Route.IMAGES) },
+            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginEnd = dp(4) })
+        importButtons.addView(primaryAction("⇩\nImporter tous\nles albums") { showAlbumImport() },
+            LinearLayout.LayoutParams(0, dp(86), 1f).apply { marginStart = dp(4) })
+        imports.addView(importButtons)
         layout.addView(imports, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val auto = section("TRI AUTOMATIQUE", "Désactivé pour le moment, comme convenu. Aucun fichier ne sera classé automatiquement.")
+        val auto = section("✦  TRI AUTOMATIQUE",
+            "Aucun classement automatique n’est activé : tu gardes le contrôle.")
         auto.addView(switchRow("Activer le tri automatique  ·  À venir", "auto_sort", false))
         auto.addView(switchRow("Proposer une catégorie  ·  À venir", "auto_suggest", false))
         auto.addView(switchRow("Créer une catégorie si besoin  ·  À venir", "auto_create", false))
-        auto.addView(note("Types à analyser : Images ✓   Vidéos ✓\nCaptures d’écran · Téléchargements · Partages · Autres : dernière étape"))
+        auto.addView(note("Types prévus :  Images ✓   Vidéos ✓   Captures d’écran   Téléchargements   Partages   Autres"))
         layout.addView(auto, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val dup = section("GESTION DES DOUBLONS", "Action par défaut : Me demander à chaque fois")
-        dup.addView(action("Rechercher les doublons SHA-256") { findDuplicates() })
+        val dup = section("▣  GESTION DES DOUBLONS",
+            "Comparaison stricte SHA-256 · aucune suppression automatique")
+        dup.addView(primaryAction("Rechercher les doublons") { findDuplicates() },
+            LinearLayout.LayoutParams(-1, dp(52)))
         layout.addView(dup, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val cats = section("MES CATÉGORIES")
+        val cats = section("▣  MES CATÉGORIES", "Modifier le nom ou l’image de chaque catégorie")
         savedCategories().forEach { category ->
-            cats.addView(action("Modifier  ·  $category") { showCategoryEditor(category) })
+            val row = action("›  $category") { showCategoryEditor(category) }
+            row.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            cats.addView(row, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(4) })
         }
-        cats.addView(action("+ Ajouter une catégorie") { addCategoryDialog() })
+        cats.addView(primaryAction("+  Ajouter une catégorie") { addCategoryDialog() },
+            LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(4) })
         layout.addView(cats, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val storage = section("ESPACE DE STOCKAGE")
         val stat = StatFs(Environment.getDataDirectory().path)
         val total = stat.totalBytes.coerceAtLeast(1L)
         val free = stat.availableBytes
         val used = total - free
+        val storage = section("▰  ESPACE DE STOCKAGE",
+            "${formatBytes(used)} utilisés sur ${formatBytes(total)}  ·  ${formatBytes(free)} disponibles")
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000
             progress = ((used * 1000L) / total).toInt()
         }
-        storage.addView(bar, LinearLayout.LayoutParams(-1, dp(18)))
-        storage.addView(note("${formatBytes(used)} utilisés sur ${formatBytes(total)}  ·  ${formatBytes(free)} disponibles"))
+        storage.addView(bar, LinearLayout.LayoutParams(-1, dp(22)))
         layout.addView(storage, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
 
-        val other = section("AUTRES OPTIONS")
-        other.addView(action("Vider le cache") {
+        val other = section("•••  AUTRES OPTIONS")
+        other.addView(action("⌁  Vider le cache") {
             bitmapCache.evictAll()
             try { cacheDir.deleteRecursively() } catch (_: Exception) {}
             Toast.makeText(this, "Cache vidé", Toast.LENGTH_SHORT).show()
-        })
-        other.addView(action("Réinitialiser l’application") { confirmReset() })
-        other.addView(action("À propos") {
+        }, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(4) })
+        other.addView(action("↻  Réinitialiser l’application") { confirmReset() },
+            LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(4) })
+        other.addView(action("ⓘ  À propos") {
             val version = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "0.5.4" }
             AlertDialog.Builder(this).setTitle("Les Lapibreizh — La Médiathèque")
                 .setMessage("Version $version\n\nMédiathèque noire & or.\nLes actions sensibles restent toujours confirmées.")
                 .setPositiveButton("Fermer", null).show()
-        })
-        layout.addView(other)
-        layout.addView(hero(R.drawable.art_footer_bretagne,140), LinearLayout.LayoutParams(-1,dp(140)))
-        layout.addView(note("Les Lapibreizh · Nos souvenirs, notre histoire"))
-        setContentView(ScrollView(this).apply { addView(layout) })
+        }, LinearLayout.LayoutParams(-1, dp(50)))
+        layout.addView(other, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(155)))
+        layout.addView(note("Les Lapibreizh · Plus que des photos, une vie ensemble"))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun addCategoryDialog() {
