@@ -1,0 +1,33 @@
+LES LAPIBREIZH — V064 (0.6.4) — PROJET ANDROID COMPLET
+22 septembre 2026 — Source de départ : V063 du dépôt GitHub, dernier build vert bbf6341960563f85b2dd895447c6d0014e4a5420.
+
+INSTALLATION DANS LE DEPOT
+1. Décompresser ce ZIP à la racine du dépôt Les-Lapibreizh-Android (au niveau des dossiers app et .github).
+2. Accepter le remplacement des fichiers existants ; ne pas placer le ZIP dans app ni en sous-dossier.
+3. Git : Stage All -> Commit -> Push.
+   Commit : V064 - Navigation categories et refonte fonctionnelle
+4. Attendre un build GitHub Actions VERT ; télécharger l'APK de CE build.
+5. La version est désormais 0.6.4 (versionCode 14). Ne pas désinstaller l'application pour tenter de régler un souci de signature : cela peut effacer les préférences locales.
+
+ARCHITECTURE IMPLEMENTEE EN VRAI CODE NATIF
+- Paramètres compact : une commande « Modifier les catégories » remplace la liste interminable.
+- Images : un bouton visible « Modifier les catégories d'images » mène au gestionnaire.
+- Vidéos : un bouton visible « Modifier les catégories vidéo » mène au même gestionnaire avec filtre vidéo.
+- Le gestionnaire a deux onglets Images / Vidéos et affiche des cartes avec images réellement choisies par l'utilisateur, noms et nombres provenant des médias accessibles sur l'appareil.
+- Une seule catégorie partagée (mêmes préférences) : pas de copie homonyme entre onglets. Les nouvelles catégories créées dans un onglet sont propres à ce type ; les catégories communes existantes sont conservées.
+- Le bouton Retour du gestionnaire revient à l'origine (Paramètres / Images / Vidéos). L'éditeur revient au gestionnaire et la sauvegarde idem. Aucun deuxième bouton Retour décoratif.
+- Editeur : photo choisie via ACTION_OPEN_DOCUMENT, permission URI persistante, icône, nom, aperçu et déplacement dans la liste. Les noms renommés sont résolus aussi pour les anciens liens des catalogues illustrés.
+- Suppression de catégorie : conservation des fichiers présélectionnée. Si Android 11+ et permission média complète, l'option corbeille requiert deux confirmations dans l'app + validation Android ; maximum 500. Si refus Android, catégorie conservée.
+- Classement manuel : maximum 1000 par opération, écritures confirmées par lots et compteurs réels réussites / déjà classés / erreurs ; aucune suppression ou déplacement du fichier original.
+- Import des albums : « Depuis la galerie » laisse choisir, « Tous les albums » présélectionne les albums, destinations choisies explicitement, limite 1000, succès uniquement si sauvegarde confirmée. Pas de copies physiques.
+- Photos/Vidéos dans « À classer » filtrent sur place, « Autres vidéos » montre les vidéos sans catégorie, recherche nom / album / catégorie / type (captures d'écran comprises).
+- Galerie : lots de 120 conservés, choix Petites/Moyennes/Grandes, cartes verticales et titres sur deux lignes.
+- Suppression médias : maximum 500, sélection cochée + confirmation finale + Android quand disponible. Réinitialisation : deux confirmations.
+- Tri automatique, suggestions IA, sons et thèmes alternatifs non implémentés : ils restent explicitement désactivés, et aucune copie ou analyse IA fictive n'est simulée.
+
+VISUELS ET LIMITES HONNETES
+Les écrans sont de vrais composants Android actifs, utilisant les ressources graphiques du projet et non des captures d'écran inertes. La mise en page suit l'orientation des maquettes ; elle n'est pas une reproduction pixel par pixel sur toutes les tailles de téléphone. Les anciennes planches de catégorie de la galerie Images/Vidéos sont des images fixes : après renommage, leurs inscriptions dessinées peuvent rester anciennes, mais la nouvelle page Mes catégories affiche le vrai nom et les zones tactiles historiques sont redirigées par alias.
+Les nombres affichés dans les nouvelles listes de catégories et le rapport de classement viennent des données réelles accessibles, pas des valeurs fictives des maquettes. Les fichiers originaux ne sont pas modifiés par le classement logique.
+
+VERIFICATION
+Structure ZIP, références de drawables, XML, repères fonctionnels et cohérence version vérifiés localement. Aucune compilation Android native disponible dans cet environnement : le build GitHub Actions reste OBLIGATOIRE avant installation. Ne pas présenter ce ZIP comme un APK certifié fonctionnel avant confirmation du build et tests sur téléphone.

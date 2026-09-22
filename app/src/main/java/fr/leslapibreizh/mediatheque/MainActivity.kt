@@ -59,6 +59,16 @@ class MainActivity : AppCompatActivity() {
     private val duplicateTrashSelection = linkedSetOf<String>()
     private var pendingTrashKeys = emptyList<String>()
     private var pendingCategoryImage: String? = null
+    private enum class CategoryEntry { SETTINGS, IMAGES, VIDEOS }
+    private var categoryEntry = CategoryEntry.SETTINGS
+    private var videoCategoryTab = false
+    private var pendingCategoryDeletion: String? = null
+    private val videoCatalogCategories = listOf(
+        "Montages vidéo", "Académie des Lapibreizh", "Fiches sportives",
+        "Restaurant des Lapibreizh", "Voyages de Carnot", "Épisodes des Lapibreizh",
+        "Personnages", "Lapins réels", "Cueillette", "Fiches vertes",
+        "Fiches bleues", "Fiches orange", "Fiches rouges", "Fiches violettes",
+        "Fiches bonus", "Bricolage")
     private var screenMode = "home"
     private var textSearch = ""
     private var pendingCategory: String? = null
@@ -78,7 +88,7 @@ class MainActivity : AppCompatActivity() {
         "Restaurant des Lapibreizh", "Voyages de Carnot", "Épisodes des Lapibreizh",
         "Personnages", "Lapins réels", "À classer")
 
-    private enum class Route { HOME, IMAGES, VIDEOS, UNSORTED, FAVORITES, SETTINGS }
+    private enum class Route { HOME, IMAGES, VIDEOS, UNSORTED, FAVORITES, SETTINGS, CATEGORIES, SEARCH }
     private data class Media(
         val id: Long,
         val uri: Uri,
@@ -97,6 +107,12 @@ class MainActivity : AppCompatActivity() {
         window.navigationBarColor = black
         // Sécurité V0.5.6 : aucun classement automatique tant qu’il n’est pas validé.
         prefs.edit().putBoolean("auto_sort", false).putBoolean("auto_suggest", false).putBoolean("auto_create", false).apply()
+        // Migration unique : préserver les anciennes catégories et ajouter Montages vidéo.
+        if (!prefs.getBoolean("v064_video_category_seeded", false)) {
+            val categories = savedCategories()
+            prefs.edit().putString("category_names", categories.joinToString("\u001f"))
+                .putBoolean("v064_video_category_seeded", true).apply()
+        }
         showHome()
     }
 
@@ -168,30 +184,54 @@ class MainActivity : AppCompatActivity() {
         updateItems()
     }
 
+    /** One native navigation bar, with the active destination highlighted. */
     private fun navBar(active: Route): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        setPadding(0, dp(5), 0, dp(3))
-        listOf(
-            Triple("⌂\nAccueil", Route.HOME) { showHome() },
-            Triple(if (active == Route.UNSORTED) "▣\nPhotos" else "▣\nImages", Route.IMAGES) {
-                if (active == Route.UNSORTED) setUnsortedFilter(UnsortedFilter.PHOTOS)
-                else navigate(Route.IMAGES)
-            },
-            Triple("▶\nVidéos", Route.VIDEOS) {
-                if (active == Route.UNSORTED) setUnsortedFilter(UnsortedFilter.VIDEOS)
-                else navigate(Route.VIDEOS)
-            },
-            Triple("♡\nFavoris", Route.FAVORITES) { navigate(Route.FAVORITES) },
-            Triple("⚙\nParamètres", Route.SETTINGS) { showSettings() }
-        ).forEach { (label, r, click) ->
-            val b=action(label, click).apply {
-                textSize=11f
-                if (r == active) background = GradientDrawable().apply {
-                    setColor(Color.rgb(91,70,39)); cornerRadius=dp(11).toFloat()
-                    setStroke(dp(2), gold)
-                }
+        setBackgroundColor(black)
+        setPadding(dp(4), dp(4), dp(4), dp(3))
+        val tabs: List<Triple<String, Route, () -> Unit>> = if (active == Route.UNSORTED) listOf(
+            Triple("⌂\nAccueil", Route.HOME, { showHome() }),
+            Triple("▣\nPhotos", Route.IMAGES, { setUnsortedFilter(UnsortedFilter.PHOTOS) }),
+            Triple("▶\nVidéos", Route.VIDEOS, { setUnsortedFilter(UnsortedFilter.VIDEOS) }),
+            Triple("▦\nTout", Route.UNSORTED, { setUnsortedFilter(UnsortedFilter.ALL) }),
+            Triple("⚙\nParamètres", Route.SETTINGS, { showSettings() })
+        ) else listOf(
+            Triple("⌂\nAccueil", Route.HOME, { showHome() }),
+            Triple("▧\nGalerie", Route.IMAGES, { showMediaDashboard(Route.IMAGES) }),
+            Triple("▱\nCatégories", Route.CATEGORIES, {
+                val video = active == Route.VIDEOS || (active == Route.CATEGORIES && videoCategoryTab)
+                val origin=if (active==Route.CATEGORIES) categoryEntry
+                    else if (video) CategoryEntry.VIDEOS else CategoryEntry.IMAGES
+                showCategoryManager(video, origin)
+            }),
+            Triple("⌕\nRecherche", Route.SEARCH, {
+                openSearch(if (active == Route.VIDEOS) Route.VIDEOS else Route.IMAGES)
+            }),
+            Triple("⚙\nParamètres", Route.SETTINGS, { showSettings() })
+        )
+        tabs.forEach { (label, tab, destination) ->
+            val isActive = tab == active
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                contentDescription = label.replace("\n", " ")
+                setOnClickListener { destination() }
+                addView(TextView(this@MainActivity).apply {
+                    text = label.substringBefore('\n')
+                    textSize = 24f
+                    setTextColor(if (isActive) gold else Color.WHITE)
+                    gravity = Gravity.CENTER
+                }, LinearLayout.LayoutParams(-1, dp(35)))
+                addView(TextView(this@MainActivity).apply {
+                    text = label.substringAfter('\n')
+                    textSize = 11f
+                    setTextColor(if (isActive) gold else cream)
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                }, LinearLayout.LayoutParams(-1, dp(22)))
             }
-            addView(b, LinearLayout.LayoutParams(0, dp(64), 1f).apply { marginStart=dp(2); marginEnd=dp(2) })
+            addView(cell, LinearLayout.LayoutParams(0, dp(65), 1f))
         }
     }
 
@@ -218,7 +258,8 @@ class MainActivity : AppCompatActivity() {
 
     /** Artwork stays pixel-identical to approved reference; only hit zones are transparent. */
     private fun artworkScreen(resource: Int, artWidth: Int, artHeight: Int,
-                              hits: List<Hotspot>, counts: Boolean = false) {
+                              hits: List<Hotspot>, counts: Boolean = false,
+                              extraAction: Pair<String, () -> Unit>? = null) {
         val width = resources.displayMetrics.widthPixels
         val height = (width.toFloat() * artHeight / artWidth).toInt()
         val factor = width.toFloat() / artWidth
@@ -283,7 +324,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(ScrollView(this).apply {
             isFillViewport = false
             setBackgroundColor(black)
-            addView(frame, FrameLayout.LayoutParams(width, height))
+            val content = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            if (extraAction != null) {
+                content.addView(action(extraAction.first) { extraAction.second.invoke() }.apply {
+                    textSize = 15f
+                    contentDescription = extraAction.first
+                }, LinearLayout.LayoutParams(-1, dp(50)).apply {
+                    setMargins(dp(12), dp(4), dp(12), dp(4))
+                })
+            }
+            content.addView(frame, LinearLayout.LayoutParams(width, height))
+            addView(content)
         })
     }
 
@@ -292,7 +343,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openSearch(kind: Route) {
         val field = EditText(this).apply {
-            hint = "Rechercher par nom de fichier"
+            hint = "Nom, album, catégorie ou capture d’écran"
             setSingleLine(true); setTextColor(Color.BLACK)
             setText(textSearch)
         }
@@ -306,8 +357,18 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Annuler", null).show()
     }
 
+    private fun resolveCategory(name: String): String {
+        var resolved = name
+        repeat(12) {
+            val next = prefs.getString("category_alias_$resolved", null)
+            if (next.isNullOrBlank() || next == resolved) return resolved
+            resolved = next
+        }
+        return resolved
+    }
+
     private fun openGalleryCategory(category: String, kind: Route = Route.IMAGES) {
-        pendingCategory = if (category == "À classer") "" else category
+        pendingCategory = if (category == "À classer") "" else resolveCategory(category)
         navigate(if (category == "À classer") Route.UNSORTED else kind)
     }
 
@@ -384,7 +445,10 @@ class MainActivity : AppCompatActivity() {
         hits += hs(353,1405,170,120,"Vidéos") { showVideosCategories() }
         hits += hs(523,1405,170,120,"Favoris") { navigate(Route.FAVORITES) }
         hits += hs(693,1405,160,120,"Paramètres") { showSettings() }
-        artworkScreen(R.drawable.ui_images_exact,864,1536,hits,counts=true)
+        artworkScreen(R.drawable.ui_images_exact,864,1536,hits,counts=true,
+            extraAction = "⚙  Modifier les catégories d’images  ›" to {
+                showCategoryManager(false, CategoryEntry.IMAGES)
+            })
     }
 
     private fun showVideosCategories() {
@@ -407,10 +471,14 @@ class MainActivity : AppCompatActivity() {
         hits += hs(353,1356,170,173,"Vidéos") { navigate(Route.VIDEOS) }
         hits += hs(523,1356,170,173,"Favoris") { navigate(Route.FAVORITES) }
         hits += hs(693,1356,160,173,"Paramètres") { showSettings() }
-        artworkScreen(R.drawable.ui_videos_exact,864,1536,hits)
+        artworkScreen(R.drawable.ui_videos_exact,864,1536,hits,
+            extraAction = "⚙  Modifier les catégories vidéo  ›" to {
+                showCategoryManager(true, CategoryEntry.VIDEOS)
+            })
     }
 
     private fun openOtherVideos() {
+        // « Autres vidéos » est la vue des vidéos sans catégorie Lapibreizh.
         pendingCategory = ""
         navigate(Route.VIDEOS)
     }
@@ -811,9 +879,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun savedCategories(): List<String> {
         val raw = prefs.getString("category_names", null)
-        return if (raw == null) canonicalCategories + listOf("Fiches vertes", "Fiches bleues", "Fiches orange",
-            "Fiches rouges", "Fiches violettes", "Fiches bonus", "Cueillette", "Autres")
+        val saved = if (raw == null) canonicalCategories + listOf(
+            "Fiches vertes", "Fiches bleues", "Fiches orange", "Fiches rouges",
+            "Fiches violettes", "Fiches bonus", "Cueillette", "Autres")
             else raw.split('\u001f').filter { it.isNotBlank() }
+        // Migration non destructive : « Montages vidéo » devient une vraie catégorie
+        // sans retirer ni renommer celles déjà enregistrées.
+        return if (raw == null) (saved + "Montages vidéo").distinct() else saved.distinct()
+    }
+
+    private fun categoryScope(name: String): String =
+        prefs.getString("category_scope_$name", null)
+            ?: if (name == "Montages vidéo") "video" else "both"
+
+    private fun categoriesForTab(video: Boolean): List<String> = savedCategories().filter { name ->
+        val scope = categoryScope(name)
+        if (video) scope == "video" || (scope == "both" &&
+            (name in videoCatalogCategories || prefs.getBoolean("category_video_$name",false) ||
+                prefs.all.any { (k, v) -> k.startsWith("media_v:") && v == name }))
+        else scope != "video"
     }
 
     private fun classifySelected() {
@@ -1043,99 +1127,194 @@ class MainActivity : AppCompatActivity() {
         screenMode = "settings"
         route = Route.SETTINGS
         selected.clear()
-        val layout = root().apply { setPadding(dp(8), dp(6), dp(8), dp(9)) }
-        // Le bandeau validé contient déjà Retour, logo et Paramètres ; une seule zone Retour cliquable.
+        val layout = root().apply { setPadding(dp(8), dp(5), dp(8), dp(6)) }
         layout.addView(settingsHeader { showHome() })
 
         val general = section("⚙  Général", "Personnalise l’apparence et le fonctionnement de l’application")
         val scenic = FrameLayout(this)
-        scenic.addView(scenicImage(R.drawable.ui_settings_scene, 208), FrameLayout.LayoutParams(-1, dp(208)))
+        scenic.addView(scenicImage(R.drawable.ui_settings_scene, 182),
+            FrameLayout.LayoutParams(-1, dp(182)))
         scenic.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0xFF100E0B.toInt(), 0xEF100E0B.toInt(), 0x00100E0B))
-        }, FrameLayout.LayoutParams(-1, dp(208)))
+                intArrayOf(0xF8080705.toInt(), 0xD0080705.toInt(), 0x10080705))
+        }, FrameLayout.LayoutParams(-1, dp(182)))
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(5), dp(6), dp(2), dp(2))
+            setPadding(dp(3), dp(2), dp(2), dp(2))
         }
-        controls.addView(simpleLabel("Thème : noir & or", 14f, gold))
-        controls.addView(simpleLabel("Langue : Français", 13f))
-        controls.addView(switchRow("Son / vibrations · À venir", "vibrations", false))
+        controls.addView(simpleLabel("◉  Thème", 13f, cream))
+        val themes = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        listOf("Clair", "☾ Sombre", "Système").forEachIndexed { i, title ->
+            val button = action(title) {
+                if (i == 1) Toast.makeText(this, "Thème noir et or actif", Toast.LENGTH_SHORT).show()
+            }.apply {
+                textSize = 10f
+                isEnabled = i == 1
+                alpha = if (i == 1) 1f else 0.65f
+            }
+            themes.addView(button, LinearLayout.LayoutParams(0, dp(31), 1f).apply {
+                marginEnd = dp(2)
+            })
+        }
+        controls.addView(themes)
+        controls.addView(simpleLabel("◎  Langue   Français", 13f))
+        controls.addView(switchRow("Son et vibrations · À venir", "vibrations", false))
         controls.addView(switchRow("Animations · À venir", "animations", false))
-        scenic.addView(controls, FrameLayout.LayoutParams(dp(220), dp(206), Gravity.TOP or Gravity.START))
-        general.addView(scenic, LinearLayout.LayoutParams(-1, dp(208)))
-        general.addView(note("Les thèmes alternatifs, le son et les animations seront activés plus tard."))
-        layout.addView(general, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+        scenic.addView(controls, FrameLayout.LayoutParams(dp(233), -1, Gravity.START))
+        general.addView(scenic, LinearLayout.LayoutParams(-1, dp(182)))
+        layout.addView(general, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
 
-        val imports = section("▣  Import des albums existants", "Retrouve tes albums sans copier ni modifier les originaux")
+        val imports = section("▣  Import des albums existants", "Classe tes photos et vidéos sans déplacer les originaux")
         val importActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        importActions.addView(rowCard("▧", "Depuis la galerie", "Voir les images") { navigate(Route.IMAGES) },
-            LinearLayout.LayoutParams(0, dp(83), 1f).apply { rightMargin = dp(3) })
-        importActions.addView(rowCard("⇩", "Albums", "Choisir et classer") { showAlbumImport() },
-            LinearLayout.LayoutParams(0, dp(83), 1f).apply { leftMargin = dp(3) })
+        importActions.addView(rowCard("▧", "Depuis la galerie", "Choisir les albums") { showAlbumImport() },
+            LinearLayout.LayoutParams(0, dp(73), 1f).apply { rightMargin = dp(3) })
+        importActions.addView(rowCard("⇩", "Tous les albums", "Tout présélectionner") { showAlbumImport(true) },
+            LinearLayout.LayoutParams(0, dp(73), 1f).apply { leftMargin = dp(3) })
         imports.addView(importActions)
-        layout.addView(imports, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+        layout.addView(imports, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
 
-        val auto = section("✦  Tri automatique", "Désactivé : toute affectation nécessite ta validation")
+        val auto = section("✦  Tri automatique", "Non activé : aucun classement sans ton accord")
         auto.addView(switchRow("Tri automatique · Indisponible", "auto_sort", false))
-        auto.addView(switchRow("Suggestion automatique · Indisponible", "auto_suggest", false))
+        auto.addView(switchRow("Suggestions · Indisponibles", "auto_suggest", false))
         auto.addView(switchRow("Création automatique · Indisponible", "auto_create", false))
-        layout.addView(auto, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+        auto.addView(simpleLabel("Types prévus : images, vidéos, captures, téléchargements et partages.", 11f))
+        layout.addView(auto, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
 
-        val dup = section("▣  Gestion des doublons", "Comparer les fichiers par SHA-256, choisir toi-même")
-        dup.addView(rowCard("▢", "Analyser les doublons", "Aucun effacement automatique") { findDuplicates() })
-        layout.addView(dup, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+        val categories = section("▦  Gestion des catégories", "Une page dédiée pour toutes tes catégories")
+        categories.addView(rowCard("✎", "Modifier les catégories", "Photo, nom, icône et ordre  ›") {
+            showCategoryManager(false, CategoryEntry.SETTINGS)
+        }, LinearLayout.LayoutParams(-1,dp(72)))
+        layout.addView(categories,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
+
+        val dup = section("▣  Gestion des doublons", "Comparaison SHA-256 : décision toujours manuelle")
+        dup.addView(rowCard("▢", "Analyser les doublons", "Aucun effacement automatique") { findDuplicates() },
+            LinearLayout.LayoutParams(-1,dp(70)))
+        layout.addView(dup, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
 
         val stat = StatFs(Environment.getDataDirectory().path)
         val total = stat.totalBytes.coerceAtLeast(1L)
         val free = stat.availableBytes
         val used = total - free
-        val storageAndOptions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val storage = section("▰  Stockage", "${formatBytes(used)} / ${formatBytes(total)}")
-        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 1000; progress = ((used * 1000L) / total).toInt()
-        }
-        storage.addView(bar, LinearLayout.LayoutParams(-1, dp(22)))
-        storage.addView(simpleLabel("${formatBytes(free)} libres", 12f))
-        storageAndOptions.addView(storage, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(3) })
+        storage.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply {
+            max=1000; progress=((used*1000L)/total).toInt()
+        },LinearLayout.LayoutParams(-1,dp(15)))
+        storage.addView(simpleLabel("${formatBytes(free)} disponibles",11f))
         val other = section("•••  Autres options")
-        other.addView(action("Vider le cache") {
+        other.addView(action("Vider le cache  ›") {
             AlertDialog.Builder(this).setTitle("Vider le cache ?")
                 .setMessage("Les originaux ne seront pas supprimés.")
-                .setPositiveButton("Vider") { _, _ ->
+                .setPositiveButton("Vider") { _,_ ->
                     bitmapCache.evictAll()
                     try { cacheDir.deleteRecursively() } catch (_: Exception) {}
-                    Toast.makeText(this, "Cache vidé", Toast.LENGTH_SHORT).show()
-                }.setNegativeButton("Annuler", null).show()
-        })
-        other.addView(action("Réinitialiser") { confirmReset() })
-        other.addView(action("À propos") {
-            val version = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "0.6.3" }
+                    Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show()
+                }.setNegativeButton("Annuler",null).show()
+        },LinearLayout.LayoutParams(-1,dp(40)))
+        other.addView(action("Réinitialiser  ›") { confirmReset() },LinearLayout.LayoutParams(-1,dp(40)))
+        other.addView(action("À propos  ›") {
+            val version = try { packageManager.getPackageInfo(packageName,0).versionName }
+                catch (_:Exception) { "Version inconnue" }
             AlertDialog.Builder(this).setTitle("Les Lapibreizh — La Médiathèque")
-                .setMessage("Version $version\n\nLes médias originaux ne sont pas déplacés par le classement logique.")
-                .setPositiveButton("Fermer", null).show()
-        })
-        storageAndOptions.addView(other, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(3) })
-        layout.addView(storageAndOptions, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
-
-        val cats = section("▣  Mes catégories", "Modifier la photo, le nom, l’icône et l’ordre")
-        savedCategories().forEach { category ->
-            cats.addView(rowCard("▣", category, "Modifier la catégorie") { showCategoryEditor(category) },
-                LinearLayout.LayoutParams(-1, dp(68)).apply { bottomMargin = dp(4) })
-        }
-        cats.addView(primaryAction("+  Ajouter une catégorie") { addCategoryDialog() },
-            LinearLayout.LayoutParams(-1, dp(55)))
-        layout.addView(cats)
-        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(143)))
-        val page=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL
-            setBackgroundColor(black)
-        }
-        page.addView(ScrollView(this).apply {
-            setBackgroundColor(black);addView(layout)
-        },LinearLayout.LayoutParams(-1,0,1f))
-        page.addView(navBar(Route.SETTINGS),LinearLayout.LayoutParams(-1,dp(76)))
+                .setMessage("Version $version\n\nClassement logique : les fichiers originaux restent en place.")
+                .setPositiveButton("Fermer",null).show()
+        },LinearLayout.LayoutParams(-1,dp(40)))
+        val row = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        row.addView(storage,LinearLayout.LayoutParams(0,-2,1f).apply { rightMargin=dp(3) })
+        row.addView(other,LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(3) })
+        layout.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
+        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(140)))
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(black) }
+        page.addView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) },
+            LinearLayout.LayoutParams(-1,0,1f))
+        page.addView(navBar(Route.SETTINGS),LinearLayout.LayoutParams(-1,dp(75)))
         setContentView(page)
+    }
+
+    private fun exitCategoryManager() {
+        when (categoryEntry) {
+            CategoryEntry.SETTINGS -> showSettings()
+            CategoryEntry.IMAGES -> showImagesCategories()
+            CategoryEntry.VIDEOS -> showVideosCategories()
+        }
+    }
+
+    /** Shared preferences, two filtered views; never duplicate a category by media type. */
+    private fun showCategoryManager(video: Boolean, origin: CategoryEntry = categoryEntry) {
+        generation++
+        val request = generation
+        categoryEntry = origin
+        videoCategoryTab = video
+        screenMode = "categories"
+        route = Route.CATEGORIES
+        selected.clear()
+        val layout=root().apply { setPadding(dp(9),dp(5),dp(9),dp(8)) }
+        layout.addView(brandHeader("Retour", "Mes catégories", { exitCategoryManager() }))
+        layout.addView(visualTitle("▱", "MES CATÉGORIES",
+            "Modifier la photo, le nom, l’icône et l’ordre"))
+        val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        tabs.addView(if (!video) primaryAction("▧  Images") {
+            showCategoryManager(false,origin)
+        } else action("▧  Images") { showCategoryManager(false,origin) },
+            LinearLayout.LayoutParams(0,dp(47),1f).apply { rightMargin=dp(3) })
+        tabs.addView(if (video) primaryAction("▶  Vidéos") {
+            showCategoryManager(true,origin)
+        } else action("▶  Vidéos") { showCategoryManager(true,origin) },
+            LinearLayout.LayoutParams(0,dp(47),1f).apply { leftMargin=dp(3) })
+        layout.addView(tabs,LinearLayout.LayoutParams(-1,dp(47)).apply { bottomMargin=dp(8) })
+        layout.addView(simpleLabel(if (video) "Catégories vidéo : mêmes données, accès dédié."
+            else "Catégories images : tes photos et leur classement.",12f,cream))
+        val names = categoriesForTab(video)
+        val counts=linkedMapOf<String,TextView>()
+        names.forEach { category ->
+            val row=LinearLayout(this).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
+                setPadding(dp(5),dp(4),dp(7),dp(4))
+                background=GradientDrawable().apply {
+                    setColor(Color.rgb(22,21,19))
+                    cornerRadius=dp(10).toFloat()
+                    setStroke(dp(1),Color.rgb(90,82,66))
+                }
+                isClickable=true
+                contentDescription="Modifier la catégorie $category"
+                setOnClickListener { showCategoryEditor(category) }
+            }
+            row.addView(currentCategoryPhoto(category),LinearLayout.LayoutParams(dp(80),dp(58)))
+            val labels=LinearLayout(this).apply {
+                orientation=LinearLayout.VERTICAL;setPadding(dp(9),0,0,0)
+            }
+            labels.addView(simpleLabel(category,14f,gold))
+            labels.addView(simpleLabel("Modifier la catégorie",11f))
+            row.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
+            val count=simpleLabel("…",11f,cream)
+            count.gravity=Gravity.END or Gravity.CENTER_VERTICAL
+            counts[category]=count
+            row.addView(count,LinearLayout.LayoutParams(dp(62),-1))
+            row.addView(simpleLabel("›",23f,gold),LinearLayout.LayoutParams(dp(21),-1))
+            layout.addView(row,LinearLayout.LayoutParams(-1,dp(68)).apply { bottomMargin=dp(5) })
+        }
+        if(video) layout.addView(action("▶  Autres vidéos · afficher les non classées  ›") {
+            openOtherVideos()
+        },LinearLayout.LayoutParams(-1,dp(51)).apply { bottomMargin=dp(6) })
+        layout.addView(primaryAction(if(video) "+  Ajouter une catégorie vidéo" else "+  Ajouter une catégorie") {
+            addCategoryDialog()
+        },LinearLayout.LayoutParams(-1,dp(54)).apply { topMargin=dp(5) })
+        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(130)))
+        val page=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(black) }
+        page.addView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) },
+            LinearLayout.LayoutParams(-1,0,1f))
+        page.addView(navBar(Route.CATEGORIES),LinearLayout.LayoutParams(-1,dp(75)))
+        setContentView(page)
+        val target=if(video) Route.VIDEOS else Route.IMAGES
+        if(hasPermission(target)) io.execute {
+            val media=queryMedia(target)
+            val grouped=media.groupingBy { getCategory(it) }.eachCount()
+            runOnUiThread {
+                if(generation==request && screenMode=="categories") counts.forEach { (category,label) ->
+                    label.text="${grouped[category] ?: 0}"
+                }
+            }
+        } else counts.values.forEach { it.text="—" }
     }
 
     private fun addCategoryDialog() {
@@ -1147,13 +1326,17 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Ajouter") { _, _ ->
                 val name = editText.text.toString().trim().replace("\u001f", "")
                 if (name.isNotEmpty() && name.length <= 40 && !savedCategories().any { it.equals(name, true) }) {
-                    prefs.edit().putString("category_names", (savedCategories() + name).joinToString("\u001f")).apply()
-                    showSettings()
+                    prefs.edit()
+                        .putString("category_names", (savedCategories() + name).joinToString("\u001f"))
+                        .putString("category_scope_$name", if (videoCategoryTab) "video" else "image")
+                        .apply()
+                    showCategoryEditor(name)
                 } else Toast.makeText(this, "Nom vide, trop long ou déjà utilisé", Toast.LENGTH_SHORT).show()
             }.setNegativeButton("Annuler", null).show()
     }
 
     private fun categoryArtwork(category: String): Int = when {
+        category.contains("Montages vidéo",true) -> R.drawable.art_gallery_videos
         category.contains("sport",true) -> R.drawable.art_bombarde
         category.contains("Restaurant",true) -> R.drawable.art_carnot
         category.contains("Voyage",true) -> R.drawable.art_cookie
@@ -1165,9 +1348,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCategoryEditor(category: String) {
+        generation++
         screenMode = "editor"
+        route = Route.CATEGORIES
         val layout = root().apply { setPadding(dp(8), dp(6), dp(8), dp(8)) }
-        layout.addView(brandHeader("Catégories", "Modifier", { showSettings() }))
+        layout.addView(brandHeader("Mes catégories", "Modifier", {
+            showCategoryManager(videoCategoryTab, categoryEntry)
+        }))
         layout.addView(visualTitle("⚙", "MODIFIER UNE CATÉGORIE", "Personnalise ta catégorie selon tes envies"))
 
         val identity = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity=Gravity.TOP }
@@ -1218,9 +1405,13 @@ class MainActivity : AppCompatActivity() {
         val preview = section("PRÉVISUALISATION")
         val previewRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
         previewRow.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ui_category_scene)
+            val customImage = prefs.getString("category_image_$category", null)
+            if (customImage != null) {
+                try { setImageURI(Uri.parse(customImage)) }
+                catch (_: Exception) { setImageResource(R.drawable.ui_category_scene) }
+            } else setImageResource(R.drawable.ui_category_scene)
             scaleType=ImageView.ScaleType.CENTER_CROP
-            contentDescription="Atelier Lapibreizh"
+            contentDescription="Prévisualisation de $category"
         }, LinearLayout.LayoutParams(0,dp(100),0.53f))
         val previewText=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         val liveName=simpleLabel("$pickedIcon  $category", 19f, cream)
@@ -1252,23 +1443,39 @@ class MainActivity : AppCompatActivity() {
                 e.putString("category_image_$newName",it)
                 if (newName!=category) e.remove("category_image_$category")
             }
-            if (newName!=category) e.remove("category_icon_$category")
+            if (newName!=category) {
+                e.remove("category_icon_$category")
+                e.remove("category_scope_$category")
+                e.putString("category_alias_$category",newName)
+                e.remove("category_video_$category")
+                e.putBoolean("category_video_$newName",
+                    category in videoCatalogCategories || prefs.getBoolean("category_video_$category",false))
+                prefs.all.filterValues { it == category }.keys
+                    .filter { it.startsWith("category_alias_") }
+                    .forEach { e.putString(it,newName) }
+            }
+            e.putString("category_scope_$newName",categoryScope(category))
             e.putString("category_icon_$newName",pickedIcon)
             e.apply()
             Toast.makeText(this,"Catégorie enregistrée",Toast.LENGTH_SHORT).show()
-            showSettings()
+            showCategoryManager(videoCategoryTab, categoryEntry)
         },LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(9) })
 
         val org = section("ORGANISATION")
         org.addView(rowCard("⇅","Déplacer cette catégorie","Choisir sa position dans la liste") {
-            val names=savedCategories()
-            AlertDialog.Builder(this).setTitle("Nouvelle position de « $category »")
+            val names=categoriesForTab(videoCategoryTab)
+            AlertDialog.Builder(this).setTitle("Placer « $category » avant…")
                 .setItems(names.mapIndexed { index, n -> "${index+1}. $n" }.toTypedArray()) { _, idx ->
-                    val ordered=names.toMutableList()
-                    if(ordered.remove(category)) {
-                        ordered.add(idx.coerceAtMost(ordered.size),category)
+                    val ordered=savedCategories().toMutableList()
+                    if (ordered.remove(category)) {
+                        val target=names[idx]
+                        val insertion=if (target == category)
+                            savedCategories().indexOf(category).coerceAtMost(ordered.size)
+                            else ordered.indexOf(target).coerceAtLeast(0)
+                        ordered.add(insertion,category)
                         prefs.edit().putString("category_names",ordered.joinToString("\u001f")).apply()
                         Toast.makeText(this,"Position enregistrée",Toast.LENGTH_SHORT).show()
+                        showCategoryManager(videoCategoryTab,categoryEntry)
                     }
                 }.setNegativeButton("Annuler",null).show()
         })
@@ -1283,32 +1490,101 @@ class MainActivity : AppCompatActivity() {
         })
         layout.addView(statistics,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
         val danger=section("SUPPRIMER LA CATÉGORIE",
-            "Seul son classement sera retiré. Les photos et vidéos originales restent intactes.")
+            "Choisis ce qu’il faut faire des fichiers. Conserver les originaux est sélectionné par défaut.")
         danger.background=GradientDrawable().apply {
             setColor(Color.rgb(43,11,10)); cornerRadius=dp(14).toFloat()
             setStroke(dp(1),Color.rgb(236,71,64))
         }
+        val choice=RadioGroup(this).apply { orientation=RadioGroup.VERTICAL }
+        val keep=RadioButton(this).apply {
+            id=View.generateViewId()
+            text="Conserver les fichiers · retirer uniquement la catégorie"
+            setTextColor(cream);textSize=13f;isChecked=true
+        }
+        val trash=RadioButton(this).apply {
+            id=View.generateViewId()
+            text="Mettre aussi les fichiers à la corbeille Android (500 max)"
+            setTextColor(cream);textSize=12f
+            isEnabled=Build.VERSION.SDK_INT >= 30
+        }
+        choice.addView(keep)
+        choice.addView(trash)
+        choice.check(keep.id)
+        danger.addView(choice)
         danger.addView(dangerAction("▣  Supprimer la catégorie") {
-            AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
-                .setMessage("Ses $count médias deviendront non classés. Aucun fichier original ne sera supprimé.")
-                .setPositiveButton("Supprimer la catégorie") { _, _ ->
-                    val e=prefs.edit().putString("category_names",
-                        savedCategories().filterNot { it==category }.joinToString("\u001f"))
-                    prefs.all.filterValues { it==category }.keys.filter { it.startsWith("media_") }
-                        .forEach { e.remove(it) }
-                    e.remove("category_image_$category");e.remove("category_icon_$category")
-                    e.apply();showSettings()
-                }.setNegativeButton("Annuler",null).show()
+            if (choice.checkedRadioButtonId == trash.id) {
+                deleteCategoryAndTrash(category)
+            } else {
+                AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
+                    .setMessage("Le classement de cette catégorie sera retiré. Aucun fichier photo ou vidéo original ne sera supprimé.")
+                    .setPositiveButton("Continuer") { _, _ ->
+                        AlertDialog.Builder(this).setTitle("Dernière confirmation")
+                            .setMessage("Confirmer la suppression de la catégorie « $category » en conservant tous les fichiers ?")
+                            .setPositiveButton("Oui, supprimer la catégorie") { _, _ ->
+                                deleteCategoryMetadata(category)
+                            }.setNegativeButton("Annuler",null).show()
+                    }.setNegativeButton("Annuler",null).show()
+            }
         },LinearLayout.LayoutParams(-1,dp(56)))
         layout.addView(danger)
         layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(145)))
         setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
     }
 
+    private fun deleteCategoryMetadata(category: String) {
+        val edit = prefs.edit().putString("category_names",
+            savedCategories().filterNot { it == category }.joinToString("\u001f"))
+        prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
+            .forEach { edit.remove(it) }
+        edit.remove("category_image_$category")
+            .remove("category_icon_$category").remove("category_scope_$category")
+            .remove("category_video_$category")
+        prefs.all.filterValues { it == category }.keys.filter { it.startsWith("category_alias_") }
+            .forEach { edit.remove(it) }
+        edit.apply()
+        showCategoryManager(videoCategoryTab,categoryEntry)
+    }
+
+    /** Deleting source media needs two app confirmations AND Android's trash permission. */
+    private fun deleteCategoryAndTrash(category: String) {
+        if (Build.VERSION.SDK_INT < 30 || !hasPermission(Route.IMAGES) ||
+            !hasPermission(Route.VIDEOS) ||
+            (Build.VERSION.SDK_INT >= 33 && (!allowed(Manifest.permission.READ_MEDIA_IMAGES) ||
+                !allowed(Manifest.permission.READ_MEDIA_VIDEO)))) {
+            AlertDialog.Builder(this).setTitle("Accès complet nécessaire")
+                .setMessage("Pour inclure les fichiers originaux, autorise d’abord l’accès complet aux images et vidéos. Tu peux toujours supprimer seulement la catégorie sans toucher aux fichiers.")
+                .setPositiveButton("Compris",null).show()
+            return
+        }
+        val request=++generation
+        Toast.makeText(this,"Vérification des fichiers de la catégorie…",Toast.LENGTH_SHORT).show()
+        io.execute {
+            val medias=(queryMedia(Route.IMAGES)+queryMedia(Route.VIDEOS))
+                .filter { getCategory(it)==category }
+                .distinctBy { it.key }
+            runOnUiThread {
+                if (request!=generation || screenMode!="editor") return@runOnUiThread
+                when {
+                    medias.size>500 -> AlertDialog.Builder(this).setTitle("500 fichiers maximum")
+                        .setMessage("Cette catégorie contient ${medias.size} fichiers. Classe-les en lots de 500 avant de demander la corbeille.")
+                        .setPositiveButton("Compris",null).show()
+                    medias.isEmpty() -> AlertDialog.Builder(this).setTitle("Aucun fichier accessible")
+                        .setMessage("Aucun original accessible pour cette catégorie. Tu peux retirer uniquement son classement.")
+                        .setPositiveButton("Compris",null).show()
+                    else -> AlertDialog.Builder(this).setTitle("Fichiers originaux : ${medias.size}")
+                        .setMessage("La catégorie sera supprimée uniquement si Android confirme la mise à la corbeille de ces ${medias.size} fichiers. Continuer ?")
+                        .setPositiveButton("Vérifier une dernière fois") { _,_ ->
+                            confirmTrashFinal(medias,category)
+                        }.setNegativeButton("Annuler",null).show()
+                }
+            }
+        }
+    }
+
     private fun allKnownMediaKeysForCategory(category: String): Int =
         prefs.all.count { (k, v) -> k.startsWith("media_") && v == category }
 
-    private fun showAlbumImport() {
+    private fun showAlbumImport(preselectAll: Boolean = false) {
         screenMode = "import"
         if (!hasPermission(Route.UNSORTED)) {
             Toast.makeText(this,"Autorise d’abord l’accès aux photos et vidéos.",Toast.LENGTH_LONG).show()
@@ -1323,7 +1599,7 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0,dp(160),0.42f))
         val intro=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         intro.addView(heading("IMPORT DE VOS ALBUMS",19f))
-        intro.addView(note("Sélectionne les albums, puis choisis une destination pour chacun. Aucun tri automatique."))
+        intro.addView(note("Albums détectés sur ton appareil. Choisis manuellement leur catégorie ; les originaux restent en place."))
         heroRow.addView(intro,LinearLayout.LayoutParams(0,-2,0.58f))
         layout.addView(heroRow,LinearLayout.LayoutParams(-1,dp(160)))
         val info=note("Recherche des albums non classés…")
@@ -1344,8 +1620,14 @@ class MainActivity : AppCompatActivity() {
                     val count=checked.sumOf { groups[it]?.size ?: 0 }
                     summary.text="${checked.size} album(s) sélectionné(s) · $count média(s)"
                 }
-                val headingBox=section("SÉLECTION DES ALBUMS","Coche les albums à classer manuellement")
+                val headingBox=section("SÉLECTION DES ALBUMS",
+                    "Albums réellement détectés. Choisis chaque destination avant de classer.")
                 albumList.addView(headingBox,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+                val albumChecks=linkedMapOf<String,CheckBox>()
+                albumList.addView(action("☑  Tout sélectionner / désélectionner") {
+                    val newState=checked.size!=groups.size
+                    albumChecks.values.forEach { it.isChecked=newState }
+                },LinearLayout.LayoutParams(-1,dp(49)).apply { bottomMargin=dp(7) })
                 groups.forEach { (album,medias) ->
                     val photos=medias.count { it.mime.startsWith("image/") }
                     val card=section(album,"${medias.size} éléments · $photos photos · ${medias.size-photos} vidéos")
@@ -1357,6 +1639,7 @@ class MainActivity : AppCompatActivity() {
                             updateSummary()
                         }
                     }
+                    albumChecks[album]=checkbox
                     row.addView(checkbox,LinearLayout.LayoutParams(dp(42),dp(57)))
                     row.addView(mediaArtwork(medias.first(),65),LinearLayout.LayoutParams(dp(63),dp(65)))
                     val destination=simpleLabel("Destination : à choisir",12f,gold)
@@ -1374,6 +1657,7 @@ class MainActivity : AppCompatActivity() {
                     },LinearLayout.LayoutParams(-1,dp(51)))
                     albumList.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
                 }
+                if (preselectAll) albumChecks.values.forEach { it.isChecked=true }
                 val footer=section("RÉCAPITULATIF")
                 footer.addView(summary)
                 footer.addView(primaryAction("⇩  Classer les albums sélectionnés") {
@@ -1390,13 +1674,29 @@ class MainActivity : AppCompatActivity() {
                         else -> AlertDialog.Builder(this).setTitle("Valider le classement ?")
                             .setMessage("${chosen.size} média(s) dans ${checked.size} album(s). Seul le classement Lapibreizh sera modifié, aucun fichier physique déplacé ni copié.")
                             .setPositiveButton("Valider") { _,_->
-                                val edit=prefs.edit()
-                                checked.forEach { album ->
-                                    groups[album]?.forEach { m -> edit.putString("media_${m.key}",destinations.getValue(album)) }
+                                val selectedAlbums=checked.toList()
+                                val mapping=destinations.toMap()
+                                Toast.makeText(this,"Enregistrement du classement…",Toast.LENGTH_SHORT).show()
+                                io.execute {
+                                    val committed=try {
+                                        val editor=prefs.edit()
+                                        selectedAlbums.forEach { album ->
+                                            groups[album]?.forEach { media ->
+                                                editor.putString("media_${media.key}",mapping.getValue(album))
+                                            }
+                                        }
+                                        editor.commit()
+                                    } catch (_:Exception) { false }
+                                    runOnUiThread {
+                                        if (committed) {
+                                            Toast.makeText(this,"${chosen.size} médias classés",Toast.LENGTH_LONG).show()
+                                            showSettings()
+                                        } else AlertDialog.Builder(this)
+                                            .setTitle("Classement non confirmé")
+                                            .setMessage("L’enregistrement a échoué. Vérifie le stockage disponible et réessaie.")
+                                            .setPositiveButton("Compris",null).show()
+                                    }
                                 }
-                                edit.apply()
-                                Toast.makeText(this,"${chosen.size} médias classés",Toast.LENGTH_LONG).show()
-                                showSettings()
                             }.setNegativeButton("Annuler",null).show()
                     }
                 },LinearLayout.LayoutParams(-1,dp(65)))
@@ -1442,6 +1742,12 @@ class MainActivity : AppCompatActivity() {
     private fun showMoveSelected() {
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
+        if (medias.size > 1000) {
+            AlertDialog.Builder(this).setTitle("1 000 éléments maximum")
+                .setMessage("Réduis la sélection avant de lancer ce classement.")
+                .setPositiveButton("Compris",null).show()
+            return
+        }
         val cats = savedCategories()
         AlertDialog.Builder(this).setTitle("Déplacer / classer ${medias.size} média(s)")
             .setMessage("Choisis la catégorie de destination. Les fichiers originaux ne seront pas déplacés.")
@@ -1451,66 +1757,93 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMoveProgress(medias: List<Media>, destination: String) {
+        val request = ++generation
         screenMode = "progress"
         val layout = root()
         layout.addView(brandHeader("Galerie", "Médiathèque", { loadGallery() }))
         layout.addView(visualTitleArt(R.drawable.ui_move_glyph, "CLASSEMENT EN COURS",
-            "Classement logique : les fichiers originaux restent à leur emplacement."))
+            "Les originaux restent à leur emplacement. Les compteurs viennent des écritures réellement effectuées."))
         val progressCard = section("PROGRESSION")
-        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = medias.size }
-        val txt = heading("0 / ${medias.size} fichiers", 20f)
-        progressCard.addView(progress, LinearLayout.LayoutParams(-1, dp(28)))
-        val percent = simpleLabel("0 %", 19f, gold)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = medias.size
+        }
+        val txt = heading("0 / ${medias.size} fichiers",20f)
+        progressCard.addView(progress,LinearLayout.LayoutParams(-1,dp(24)))
+        val percent=simpleLabel("0 %",20f,gold)
         progressCard.addView(percent)
         progressCard.addView(txt)
-        val origins = medias.map { getCategory(it).ifEmpty { "À classer" } }.distinct()
-        progressCard.addView(note("Depuis : ${if (origins.size == 1) origins.first() else "Plusieurs catégories"}  →  Vers : $destination"))
-        layout.addView(progressCard, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
-        layout.addView(mediaPreviewStrip(medias), LinearLayout.LayoutParams(-1, dp(95)))
-        layout.addView(section("ℹ  CLASSEMENT SÉCURISÉ",
-            "Si un média pose problème, les autres continuent d’être traités. Les originaux restent à leur emplacement."),
-            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10) })
-        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(145)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
+        val origins=medias.map { getCategory(it).ifEmpty { "À classer" } }.distinct()
+        progressCard.addView(note("Depuis : ${if (origins.size==1) origins.first() else "Plusieurs catégories"}  →  Vers : $destination"))
+        layout.addView(progressCard,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
+        layout.addView(mediaPreviewStrip(medias),LinearLayout.LayoutParams(-1,dp(94)))
+        layout.addView(section("ℹ  CLASSEMENT LOGIQUE",
+            "Une catégorie Lapibreizh est enregistrée pour chaque média. Aucun fichier physique n’est déplacé."),
+            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
+        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(142)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
         io.execute {
-            val e = prefs.edit()
-            medias.forEachIndexed { index, m ->
-                e.putString("media_${m.key}", destination)
+            var changed=0
+            var already=0
+            var errors=0
+            var processed=0
+            medias.chunked(25).forEach { chunk ->
+                val edits=chunk.filter { getCategory(it)!=destination }
+                already+=chunk.size-edits.size
+                val saved=if (edits.isEmpty()) true else try {
+                    val editor=prefs.edit()
+                    edits.forEach { editor.putString("media_${it.key}",destination) }
+                    editor.commit()
+                } catch (_:Exception) { false }
+                if (saved) changed+=edits.size else errors+=edits.size
+                processed+=chunk.size
+                val done=processed
                 runOnUiThread {
-                    progress.progress = index + 1
-                    percent.text = "${(index + 1) * 100 / medias.size} %"
-                    txt.text = "${index + 1} / ${medias.size} fichiers"
+                    if (request == generation && screenMode=="progress") {
+                        progress.progress=done
+                        percent.text="${done * 100 / medias.size} %"
+                        txt.text="$done / ${medias.size} fichiers"
+                    }
                 }
             }
-            e.apply()
-            runOnUiThread { showMoveResult(medias.size, destination) }
+            runOnUiThread {
+                if (request == generation && screenMode=="progress")
+                    showMoveResult(changed,already,errors,processed,destination)
+            }
         }
     }
 
-    private fun showMoveResult(count: Int, destination: String) {
+    private fun showMoveResult(changed: Int, already: Int, errors: Int,
+                               processed: Int, destination: String) {
         screenMode = "result"
         selected.clear()
-        val layout = root()
-        layout.addView(brandHeader("Galerie", "Médiathèque", { loadGallery() }))
-        layout.addView(visualTitle("✓", "CLASSEMENT TERMINÉ !", "$count média(s) traités"))
-        val result = section("✓  OPÉRATION RÉUSSIE",
-            "$count média(s) sont maintenant classés dans « $destination ».\nLes fichiers originaux n’ont pas été déplacés.")
-        result.background=GradientDrawable().apply {
-            setColor(Color.rgb(12,40,20)); cornerRadius=dp(15).toFloat()
-            setStroke(dp(1), Color.rgb(64,185,104))
+        val layout=root()
+        layout.addView(brandHeader("Galerie","Médiathèque",{ loadGallery() }))
+        val title=if(errors==0) "CLASSEMENT TERMINÉ !" else "CLASSEMENT PARTIEL"
+        layout.addView(visualTitleArt(R.drawable.ui_move_glyph,title,
+            "$processed fichier(s) examiné(s) · originaux inchangés"))
+        val results=section("BILAN RÉEL", "Destination : $destination")
+        results.background=GradientDrawable().apply {
+            setColor(Color.rgb(if(errors==0) 12 else 43,if(errors==0) 40 else 29,20))
+            cornerRadius=dp(15).toFloat()
+            setStroke(dp(1),if(errors==0) Color.rgb(64,185,104) else gold)
         }
-        layout.addView(result, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+        results.addView(simpleLabel("✓  $changed nouveau(x) classement(s) enregistré(s)",16f,Color.rgb(110,233,146)))
+        results.addView(simpleLabel("▣  $already déjà dans la catégorie",14f,gold))
+        results.addView(simpleLabel("!  $errors écriture(s) non confirmée(s)",14f,
+            if(errors>0) Color.rgb(255,121,105) else cream))
+        results.addView(simpleLabel("Total : $processed traité(s)",14f,cream))
+        layout.addView(results,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
         layout.addView(primaryAction("▣  Voir les fichiers classés") {
             AlertDialog.Builder(this).setTitle("Ouvrir « $destination »")
-                .setItems(arrayOf("Images", "Vidéos")) { _, which ->
-                    pendingCategory = destination
-                    navigate(if (which == 0) Route.IMAGES else Route.VIDEOS)
+                .setItems(arrayOf("Images","Vidéos")) { _,choice ->
+                    pendingCategory=destination
+                    navigate(if(choice==0) Route.IMAGES else Route.VIDEOS)
                 }.setNegativeButton("Annuler",null).show()
-        }, LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin=dp(8) })
+        },LinearLayout.LayoutParams(-1,dp(57)).apply { bottomMargin=dp(7) })
         layout.addView(action("⌂  Retour à la médiathèque") { showMediaDashboard(Route.IMAGES) },
-            LinearLayout.LayoutParams(-1, dp(58)))
-        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(155)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
+            LinearLayout.LayoutParams(-1,dp(57)))
+        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(149)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
     }
 
     private fun showDeleteSelected() {
@@ -1558,7 +1891,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
-    private fun confirmTrashFinal(medias: List<Media>) {
+    private fun confirmTrashFinal(medias: List<Media>, categoryToDelete: String? = null) {
         if (medias.size > 500) {
             AlertDialog.Builder(this)
                 .setTitle("500 médias maximum")
@@ -1570,7 +1903,10 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Dernière confirmation")
             .setMessage("Confirmer la mise à la corbeille de ${medias.size} média(s) ?")
-            .setPositiveButton("Oui, continuer") { _, _ -> requestTrash(medias) }
+            .setPositiveButton("Oui, continuer") { _, _ ->
+                pendingCategoryDeletion = categoryToDelete
+                requestTrash(medias)
+            }
             .setNegativeButton("Annuler", null)
             .show()
     }
@@ -1582,6 +1918,8 @@ class MainActivity : AppCompatActivity() {
                 val request = MediaStore.createTrashRequest(contentResolver, medias.map { it.uri }, true)
                 startIntentSenderForResult(request.intentSender, 304, null, 0, 0, 0)
             } catch (_: Exception) {
+                pendingCategoryDeletion=null
+                pendingTrashKeys=emptyList()
                 Toast.makeText(this, "Impossible d’ouvrir la corbeille Android.", Toast.LENGTH_LONG).show()
             }
         } else {
@@ -1597,12 +1935,19 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 304) {
+            val categoryToDelete=pendingCategoryDeletion
+            pendingCategoryDeletion=null
             if (resultCode == RESULT_OK) {
                 selected.removeAll(pendingTrashKeys.toSet())
                 duplicateTrashSelection.clear()
-                Toast.makeText(this, "Médias placés dans la corbeille", Toast.LENGTH_LONG).show()
+                Toast.makeText(this,"Médias placés dans la corbeille",Toast.LENGTH_LONG).show()
             }
-            pendingTrashKeys = emptyList()
+            pendingTrashKeys=emptyList()
+            if (categoryToDelete!=null) {
+                if (resultCode==RESULT_OK) deleteCategoryMetadata(categoryToDelete)
+                else showCategoryEditor(categoryToDelete)
+                return
+            }
             if (route == Route.SETTINGS) showSettings() else loadGallery()
         } else if (requestCode == 305 && resultCode == RESULT_OK) {
             val category = pendingCategoryImage
@@ -1615,6 +1960,8 @@ class MainActivity : AppCompatActivity() {
                 pendingCategoryImage = null
                 showCategoryEditor(category)
             }
+        } else if (requestCode == 305) {
+            pendingCategoryImage=null
         }
     }
 
@@ -1683,7 +2030,7 @@ class MainActivity : AppCompatActivity() {
         fun card(title: String, media: Media): LinearLayout = section(title).apply {
             addView(mediaArtwork(media, 190), LinearLayout.LayoutParams(-1, dp(190)))
             addView(heading(media.title, 16f))
-            addView(note("${media.album}  ·  ${formatBytes(media.size)}"))
+            addView(note("Album : ${media.album} · Catégorie : ${getCategory(media).ifEmpty { "À classer" }} · ${formatBytes(media.size)}"))
         }
         val pair = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         pair.addView(card("IMAGE EXISTANTE", existing), LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=dp(4) })
@@ -1761,7 +2108,9 @@ class MainActivity : AppCompatActivity() {
             "dashboard" -> showHome()
             "images-catalog", "videos-catalog" -> showMediaDashboard(Route.IMAGES)
             "gallery" -> if (route == Route.VIDEOS) showVideosCategories() else showImagesCategories()
-            "import", "editor", "duplicate" -> showSettings()
+            "categories" -> exitCategoryManager()
+            "editor" -> showCategoryManager(videoCategoryTab, categoryEntry)
+            "import", "duplicate" -> showSettings()
             "delete", "progress", "result" -> loadGallery()
             else -> showHome()
         }
