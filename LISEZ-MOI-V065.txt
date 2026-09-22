@@ -1,0 +1,23 @@
+LES LAPIBREIZH — V065 / 0.6.5 — PROJET ANDROID COMPLET
+22 septembre 2026
+
+BASE DE TRAVAIL : archive V064 projet complet / navigation catégories.
+
+INSTALLATION :
+1. Extraire TOUT le ZIP à la RACINE du dépôt, au niveau de app, .github et build.gradle.kts ; remplacer les fichiers existants.
+2. Git : Stage All → Commit (« V065 - Finition visuelle Parametres ») → Push.
+3. Attendre la compilation GitHub Actions verte avant d'installer un APK de ce build.
+4. ApplicationId inchangé ; versionCode 15, versionName 0.6.5. Une mise à jour par-dessus une ancienne installation nécessite la même clé de signature ; ne désinstalle pas sans sauvegarder tes préférences.
+
+MODIFICATIONS CIBLÉES :
+- Page Paramètres remaniée en cartes natives noir/or/ivoire, typographie cohérente et espacement plus lisible.
+- En-tête natif avec un seul Retour actif ; illustration bretonne entière et distincte des commandes.
+- Import albums : deux cartes pleine largeur, véritables accès aux fonctions existantes.
+- Tri automatique, sons, animations et thèmes non développés : affichage explicite « à venir », aucune fausse bascule.
+- Gestion des catégories : un seul bouton « Modifier les catégories » mène à la page Images/Vidéos existante.
+- Analyse doublons, stockage réel, confirmation cache, double confirmation réinitialisation et À propos conservés.
+- Stockage sur une carte pleine largeur, barre dorée, navigation basse préservée.
+- Aucun changement du moteur de classement, suppression, éditeur des catégories ou visuels d'accueil.
+
+VALIDATION : Archive/présence des 37 fichiers sources, repères de navigation et ressources vérifiés localement.
+AUCUNE compilation Android native effectuée ici : GitHub Actions fait foi pour la compilation et tests sur téléphone nécessaires pour confirmer le rendu.
