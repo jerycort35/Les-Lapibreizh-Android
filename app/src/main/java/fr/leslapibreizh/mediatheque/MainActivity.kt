@@ -902,6 +902,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private fun primaryAction(text: String, onClick: () -> Unit) = action(text, onClick).apply {
+        setTextColor(Color.rgb(18, 14, 8))
+        textSize = 15f
+        background = GradientDrawable().apply {
+            cornerRadius = dp(14).toFloat()
+            setColor(Color.rgb(235, 190, 88))
+            setStroke(dp(1), Color.rgb(255, 218, 125))
+        }
+    }
+
+    private fun dangerAction(text: String, onClick: () -> Unit) = action(text, onClick).apply {
+        setTextColor(Color.WHITE)
+        textSize = 15f
+        background = GradientDrawable().apply {
+            cornerRadius = dp(14).toFloat()
+            setColor(Color.rgb(190, 48, 45))
+            setStroke(dp(1), Color.rgb(255, 90, 82))
+        }
+    }
+
+    private fun visualTitle(icon: String, title: String, subtitle: String? = null): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(12), dp(8), dp(10))
+            addView(heading("$icon  $title", 27f))
+            if (!subtitle.isNullOrBlank()) addView(note(subtitle))
+        }
+
+    private fun visualFooter(): ImageView = hero(R.drawable.art_footer_bretagne, 145)
+
     private fun showSettings() {
         generation++
         screenMode = "settings"
@@ -1012,65 +1043,60 @@ class MainActivity : AppCompatActivity() {
         screenMode = "editor"
         val layout = root()
         layout.addView(settingsHeader { showSettings() })
-        layout.addView(heading("MODIFIER UNE CATÉGORIE"))
-        layout.addView(note("Personnalise ta catégorie"))
-        layout.addView(heading(category, 19f))
+        layout.addView(visualTitle("⚙", "MODIFIER UNE CATÉGORIE", "Personnalise ta catégorie selon tes envies"))
+        val editCard = section("IDENTITÉ DE LA CATÉGORIE")
         val categoryPreview = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             contentDescription = "Image de la catégorie $category"
             val savedUri = prefs.getString("category_image_$category", null)
-            if (!savedUri.isNullOrBlank()) {
-                try { setImageURI(Uri.parse(savedUri)) }
-                catch (_: Exception) { setImageResource(categoryArtwork(category)) }
-            } else setImageResource(categoryArtwork(category))
+            if (!savedUri.isNullOrBlank()) try { setImageURI(Uri.parse(savedUri)) }
+            catch (_: Exception) { setImageResource(categoryArtwork(category)) }
+            else setImageResource(categoryArtwork(category))
         }
-        layout.addView(categoryPreview, LinearLayout.LayoutParams(-1,dp(145)))
-        layout.addView(action("Changer la photo") {
+        editCard.addView(categoryPreview, LinearLayout.LayoutParams(-1,dp(190)))
+        editCard.addView(primaryAction("▣  Changer l’image") {
             pendingCategoryImage = category
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                type = "image/*"
-                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"; addCategory(Intent.CATEGORY_OPENABLE)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }
             startActivityForResult(intent, 305)
-        })
+        }, LinearLayout.LayoutParams(-1,dp(52)).apply { topMargin=dp(8) })
         val name = EditText(this).apply {
-            setText(category); setTextColor(cream); setSingleLine(true)
+            setText(category); setTextColor(cream); setSingleLine(true); textSize=17f
             hint = "Nom de la catégorie"; setHintTextColor(0xFFAAAAAA.toInt())
+            background = GradientDrawable().apply { setColor(Color.rgb(15,14,12)); cornerRadius=dp(12).toFloat(); setStroke(dp(1),gold) }
+            setPadding(dp(12),dp(8),dp(12),dp(8))
         }
-        layout.addView(name)
+        editCard.addView(name, LinearLayout.LayoutParams(-1,dp(54)).apply { topMargin=dp(8) })
+        layout.addView(editCard, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
         val count = allKnownMediaKeysForCategory(category)
-        layout.addView(note("$count média(s) classé(s) dans cette catégorie"))
-        layout.addView(action("Enregistrer les modifications") {
+        layout.addView(section("STATISTIQUES", "$count média(s) classé(s) dans « $category »"), LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+        layout.addView(primaryAction("✓  Enregistrer les modifications") {
             val newName = name.text.toString().trim().replace("\u001f", "")
-            if (newName.isBlank()) return@action
+            if (newName.isBlank()) return@primaryAction
             val cats = savedCategories().map { if (it == category) newName else it }
             val e = prefs.edit().putString("category_names", cats.distinct().joinToString("\u001f"))
-            prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
-                .forEach { e.putString(it, newName) }
-            if (newName != category) {
-                prefs.getString("category_image_$category", null)?.let {
-                    e.putString("category_image_$newName", it)
-                    e.remove("category_image_$category")
-                }
+            prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }.forEach { e.putString(it, newName) }
+            if (newName != category) prefs.getString("category_image_$category", null)?.let {
+                e.putString("category_image_$newName", it); e.remove("category_image_$category")
             }
-            e.apply()
-            Toast.makeText(this, "Catégorie modifiée", Toast.LENGTH_SHORT).show()
-            showSettings()
-        })
-        layout.addView(action("Supprimer la catégorie") {
+            e.apply(); Toast.makeText(this, "Catégorie modifiée", Toast.LENGTH_SHORT).show(); showSettings()
+        }, LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(10) })
+        val danger = section("SUPPRIMER LA CATÉGORIE", "Les médias restent sur le téléphone. Seul leur classement Lapibreizh est retiré.")
+        danger.background = GradientDrawable().apply { setColor(Color.rgb(55,10,9)); cornerRadius=dp(16).toFloat(); setStroke(dp(1),Color.rgb(225,58,52)) }
+        danger.addView(dangerAction("▣  Supprimer la catégorie") {
             AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
-                .setMessage("Les médias restent sur le téléphone. Seul leur classement Lapibreizh est retiré.")
+                .setMessage("Les médias restent sur le téléphone. Seul leur classement Lapibreizh sera retiré.")
                 .setPositiveButton("Supprimer") { _, _ ->
-                    val e = prefs.edit().putString("category_names",
-                        savedCategories().filterNot { it == category }.joinToString("\u001f"))
-                    prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
-                        .forEach { e.remove(it) }
-                    e.remove("category_image_$category")
-                    e.apply(); showSettings()
+                    val e = prefs.edit().putString("category_names", savedCategories().filterNot { it == category }.joinToString("\u001f"))
+                    prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }.forEach { e.remove(it) }
+                    e.remove("category_image_$category"); e.apply(); showSettings()
                 }.setNegativeButton("Annuler", null).show()
-        })
-        setContentView(ScrollView(this).apply { addView(layout) })
+        }, LinearLayout.LayoutParams(-1,dp(58)))
+        layout.addView(danger)
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1,dp(145)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun allKnownMediaKeysForCategory(category: String): Int =
@@ -1084,30 +1110,38 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val layout = root()
-        layout.addView(action("‹ Retour") { showSettings() })
-        layout.addView(hero(R.drawable.art_import_rabbits,155), LinearLayout.LayoutParams(-1,dp(155)))
-        layout.addView(heading("IMPORT DES ALBUMS EXISTANTS"))
-        layout.addView(note("Choisis un album et une catégorie. Aucun doublon physique n’est créé et les originaux restent sur le téléphone."))
-        val info = note("Recherche des albums…")
+        layout.addView(settingsHeader { showSettings() })
+        layout.addView(hero(R.drawable.art_import_rabbits, 175), LinearLayout.LayoutParams(-1, dp(175)))
+        layout.addView(visualTitle("⇩", "IMPORT DE VOS ALBUMS EXISTANTS",
+            "Choisis un album puis sa catégorie. Tes fichiers originaux restent inchangés."))
+        val info = note("Recherche des albums du téléphone…")
         layout.addView(info)
-        setContentView(ScrollView(this).apply { addView(layout) })
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
         io.execute {
             val all = queryMedia(Route.UNSORTED)
             val groups = all.groupBy { it.album }.toSortedMap()
             runOnUiThread {
-                info.text = "${groups.size} album(s) trouvé(s)"
+                info.text = "${groups.size} album(s) trouvé(s)  ·  ${all.size} média(s) à classer"
                 groups.forEach { (album, medias) ->
-                    layout.addView(action("$album  ·  ${medias.size} média(s)") {
+                    val photos = medias.count { it.mime.startsWith("image/") }
+                    val videos = medias.size - photos
+                    val card = section(album, "${medias.size} éléments  ·  $photos photos  ·  $videos vidéos")
+                    card.addView(mediaPreviewStrip(medias))
+                    card.addView(primaryAction("Choisir la catégorie  ›") {
                         val cats = savedCategories()
-                        AlertDialog.Builder(this).setTitle("Importer « $album » dans…")
+                        AlertDialog.Builder(this).setTitle("Classer « $album » dans…")
                             .setItems(cats.toTypedArray()) { _, index ->
                                 val e = prefs.edit()
                                 medias.forEach { e.putString("media_${it.key}", cats[index]) }
                                 e.apply()
                                 Toast.makeText(this, "${medias.size} média(s) classés dans ${cats[index]}", Toast.LENGTH_LONG).show()
                             }.setNegativeButton("Annuler", null).show()
-                    })
+                    }, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
+                    layout.addView(card, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
                 }
+                layout.addView(section("ℹ  VOS FICHIERS RESTENT INCHANGÉS",
+                    "Le classement Lapibreizh n’efface ni ne déplace physiquement les originaux."))
+                layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(145)))
             }
         }
     }
@@ -1157,19 +1191,27 @@ class MainActivity : AppCompatActivity() {
     private fun showMoveProgress(medias: List<Media>, destination: String) {
         screenMode = "progress"
         val layout = root()
-        layout.addView(heading("CLASSEMENT EN COURS"))
-        layout.addView(mediaPreviewStrip(medias))
+        layout.addView(settingsHeader { loadGallery() })
+        layout.addView(visualTitle("▣", "CLASSEMENT EN COURS",
+            "Les fichiers sont classés dans Les Lapibreizh sans déplacer les originaux."))
+        val progressCard = section("PROGRESSION")
         val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = medias.size }
-        val txt = note("0 / ${medias.size}")
-        layout.addView(progress, LinearLayout.LayoutParams(-1, dp(24)))
-        layout.addView(txt)
-        layout.addView(note("Destination : $destination"))
-        setContentView(layout)
+        val txt = heading("0 / ${medias.size} fichiers", 20f)
+        progressCard.addView(progress, LinearLayout.LayoutParams(-1, dp(28)))
+        progressCard.addView(txt)
+        progressCard.addView(note("Destination  →  $destination"))
+        layout.addView(progressCard, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+        layout.addView(mediaPreviewStrip(medias), LinearLayout.LayoutParams(-1, dp(95)))
+        layout.addView(section("ℹ  CLASSEMENT SÉCURISÉ",
+            "Si un média pose problème, les autres continuent d’être traités. Les originaux restent à leur emplacement."),
+            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10) })
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(145)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
         io.execute {
             val e = prefs.edit()
             medias.forEachIndexed { index, m ->
                 e.putString("media_${m.key}", destination)
-                runOnUiThread { progress.progress = index + 1; txt.text = "${index + 1} / ${medias.size}" }
+                runOnUiThread { progress.progress = index + 1; txt.text = "${index + 1} / ${medias.size} fichiers" }
             }
             e.apply()
             runOnUiThread { showMoveResult(medias.size, destination) }
@@ -1180,14 +1222,19 @@ class MainActivity : AppCompatActivity() {
         screenMode = "result"
         selected.clear()
         val layout = root()
-        layout.addView(heading("CLASSEMENT TERMINÉ"))
-        layout.addView(heading("✓", 48f))
-        layout.addView(note("$count média(s) classé(s) dans « $destination »"))
-        layout.addView(note("Classement Lapibreizh enregistré. Les originaux sont restés à leur emplacement."))
-        layout.addView(action("Retour à la galerie") { loadGallery() })
-        layout.addView(action("Accueil") { showHome() })
-        layout.addView(hero(R.drawable.art_footer_bretagne,135),LinearLayout.LayoutParams(-1,dp(135)))
-        setContentView(layout)
+        layout.addView(settingsHeader { loadGallery() })
+        layout.addView(visualTitle("✓", "CLASSEMENT TERMINÉ !", "$count média(s) traités"))
+        val result = section("✓  OPÉRATION RÉUSSIE",
+            "$count média(s) sont maintenant classés dans « $destination ».\nLes fichiers originaux n’ont pas été déplacés.")
+        layout.addView(result, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+        layout.addView(primaryAction("▣  Voir les fichiers classés") {
+            pendingCategory = destination
+            navigate(Route.IMAGES)
+        }, LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin=dp(8) })
+        layout.addView(action("⌂  Retour à la médiathèque") { showMediaDashboard(Route.IMAGES) },
+            LinearLayout.LayoutParams(-1, dp(58)))
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1, dp(155)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun showDeleteSelected() {
@@ -1195,39 +1242,40 @@ class MainActivity : AppCompatActivity() {
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
         if (medias.size > 500) {
-            AlertDialog.Builder(this)
-                .setTitle("500 médias maximum")
+            AlertDialog.Builder(this).setTitle("500 médias maximum")
                 .setMessage("Tu as sélectionné ${medias.size} médias. La suppression est limitée à 500 médias par opération.")
-                .setPositiveButton("Compris", null)
-                .show()
+                .setPositiveButton("Compris", null).show()
             return
         }
         val total = medias.sumOf { it.size }
         val layout = root()
-        layout.addView(action("‹ Retour") { loadGallery() })
-        layout.addView(heading("SUPPRIMER DES IMAGES"))
-        layout.addView(note("${medias.size} élément(s) sélectionné(s)  ·  ${formatBytes(total)}"))
-        layout.addView(note(if (Build.VERSION.SDK_INT >= 30)
-            "Android demandera confirmation avant de placer ces fichiers dans la corbeille système."
-            else "Sur cette version d’Android, la suppression peut être définitive. Vérifie ta sélection."))
-        layout.addView(mediaPreviewStrip(medias))
-        layout.addView(note("Sélection : ${medias.take(4).joinToString { it.title }}"))
-        val warning = section("ATTENTION", if (Build.VERSION.SDK_INT >= 30)
-            "La corbeille Android permet généralement une restauration temporaire. Ce n’est pas un effacement sécurisé."
-            else "Sur Android 8–10, la suppression des médias peut être définitive.")
-        layout.addView(warning)
+        layout.addView(settingsHeader { loadGallery() })
+        layout.addView(visualTitle("▣", "SUPPRIMER DES MÉDIAS",
+            "Vérifie soigneusement ta sélection avant de continuer."))
+        val selectionCard = section("✓  ${medias.size} élément(s) sélectionné(s)", "Taille totale : ${formatBytes(total)}")
+        selectionCard.addView(mediaPreviewStrip(medias))
+        layout.addView(selectionCard, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+        val warning = LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL; setPadding(dp(14),dp(12),dp(14),dp(12))
+            background=GradientDrawable().apply { setColor(Color.rgb(65,12,10)); cornerRadius=dp(14).toFloat(); setStroke(dp(1),Color.rgb(225,58,52)) }
+            addView(heading("⚠  ATTENTION",18f))
+            addView(note(if (Build.VERSION.SDK_INT >= 30)
+                "Après ta confirmation, Android affichera encore sa propre confirmation avant la mise à la corbeille."
+                else "Sur cette version d’Android, la suppression peut être définitive."))
+        }
+        layout.addView(warning, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
         val confirmed = CheckBox(this).apply {
             text = "Je confirme le traitement de ces ${medias.size} fichiers"
-            setTextColor(cream)
+            textSize=15f; setTextColor(cream); setPadding(dp(8),dp(8),dp(8),dp(8))
         }
         layout.addView(confirmed)
-        layout.addView(action(if (Build.VERSION.SDK_INT >= 30) "Mettre à la corbeille" else "Supprimer définitivement") {
+        layout.addView(dangerAction(if (Build.VERSION.SDK_INT >= 30) "▣  Mettre à la corbeille" else "▣  Supprimer définitivement") {
             if (confirmed.isChecked) confirmTrashFinal(medias)
-            else Toast.makeText(this,"Confirme d’abord ta sélection",Toast.LENGTH_SHORT).show()
-        })
-        layout.addView(action("Annuler") { loadGallery() })
-        layout.addView(hero(R.drawable.art_footer_bretagne,135), LinearLayout.LayoutParams(-1,dp(135)))
-        setContentView(ScrollView(this).apply { addView(layout) })
+            else Toast.makeText(this,"Coche d’abord la case de confirmation",Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(-1, dp(62)).apply { bottomMargin=dp(8) })
+        layout.addView(action("✕  Annuler · conserver les éléments") { loadGallery() }, LinearLayout.LayoutParams(-1,dp(58)))
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1,dp(145)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun confirmTrashFinal(medias: List<Media>) {
@@ -1349,43 +1397,33 @@ class MainActivity : AppCompatActivity() {
         val (existing, candidate) = duplicatePairs[duplicateIndex]
         val layout = root()
         layout.addView(settingsHeader { showSettings() })
-        layout.addView(heading("DOUBLON DÉTECTÉ"))
-        layout.addView(note("${duplicateIndex + 1} sur ${duplicatePairs.size}"))
-        layout.addView(note("Deux fichiers strictement identiques selon leur empreinte SHA-256. Aucune suppression automatique."))
+        layout.addView(visualTitle("▣", "DOUBLON DÉTECTÉ",
+            "${duplicateIndex + 1} sur ${duplicatePairs.size} · fichiers strictement identiques (SHA-256)"))
 
         fun card(title: String, media: Media): LinearLayout = section(title).apply {
-            val image = ImageView(this@MainActivity).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(this@MainActivity.background)
-            }
-            addView(image, LinearLayout.LayoutParams(-1, dp(170)))
-            io.execute {
-                val bmp = try { thumbnail(media) } catch (_: Exception) { null }
-                if (bmp != null) image.post { image.setImageBitmap(bmp) }
-            }
-            addView(note("${media.title}\n${media.album}  ·  ${formatBytes(media.size)}"))
+            addView(mediaArtwork(media, 190), LinearLayout.LayoutParams(-1, dp(190)))
+            addView(heading(media.title, 16f))
+            addView(note("${media.album}  ·  ${formatBytes(media.size)}"))
         }
-        layout.addView(card("IMAGE EXISTANTE", existing), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-        layout.addView(card("NOUVELLE IMAGE / COPIE", candidate), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-
+        val pair = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        pair.addView(card("IMAGE EXISTANTE", existing), LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=dp(4) })
+        pair.addView(card("NOUVELLE IMAGE / COPIE", candidate), LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(4) })
+        layout.addView(pair, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
         val marked = duplicateTrashSelection.contains(candidate.key)
-        layout.addView(action(if (marked) "✓ Retirer de la sélection corbeille" else "Sélectionner ce doublon pour la corbeille") {
+        layout.addView(primaryAction(if (marked) "✓ Retirer de la sélection corbeille" else "▣ Sélectionner ce doublon pour la corbeille") {
             if (!duplicateTrashSelection.add(candidate.key)) duplicateTrashSelection.remove(candidate.key)
             showDuplicateComparison()
-        })
-        layout.addView(action("Conserver les deux") {
-            duplicateTrashSelection.remove(candidate.key)
-            nextDuplicate()
-        })
-        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        nav.addView(action("Précédent") {
-            if (duplicateIndex > 0) { duplicateIndex--; showDuplicateComparison() }
-        }, LinearLayout.LayoutParams(0, dp(50), 1f))
-        nav.addView(action("Suivant") { nextDuplicate() }, LinearLayout.LayoutParams(0, dp(50), 1f))
+        }, LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(8) })
+        layout.addView(action("Conserver les deux") { duplicateTrashSelection.remove(candidate.key); nextDuplicate() },
+            LinearLayout.LayoutParams(-1,dp(54)).apply { bottomMargin=dp(8) })
+        val nav = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        nav.addView(action("‹ Précédent") { if (duplicateIndex > 0) { duplicateIndex--; showDuplicateComparison() } }, LinearLayout.LayoutParams(0,dp(52),1f))
+        nav.addView(action("Suivant ›") { nextDuplicate() }, LinearLayout.LayoutParams(0,dp(52),1f))
         layout.addView(nav)
-        layout.addView(action("Terminer") { finishDuplicateSession() })
-        layout.addView(hero(R.drawable.art_footer_bretagne,125),LinearLayout.LayoutParams(-1,dp(125)))
-        setContentView(ScrollView(this).apply { addView(layout) })
+        layout.addView(primaryAction("Terminer la comparaison") { finishDuplicateSession() }, LinearLayout.LayoutParams(-1,dp(56)).apply { topMargin=dp(8) })
+        layout.addView(note("Aucune suppression automatique. Tu gardes toujours le contrôle."))
+        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1,dp(145)))
+        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun nextDuplicate() {
