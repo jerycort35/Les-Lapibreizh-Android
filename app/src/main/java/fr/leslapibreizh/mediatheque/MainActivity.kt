@@ -966,7 +966,7 @@ class MainActivity : AppCompatActivity() {
         contentDescription = "Illustration bretonne Les Lapibreizh"
         background = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
-            setColor(background)
+            setColor(this@MainActivity.background)
         }
         clipToOutline = true
         minimumHeight = dp(height)
