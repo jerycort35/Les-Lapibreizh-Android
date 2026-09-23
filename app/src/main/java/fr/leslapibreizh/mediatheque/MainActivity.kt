@@ -1331,8 +1331,8 @@ class MainActivity : AppCompatActivity() {
         val gc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
         gc.addView(compactLine("◉","Thème","Clair     ● Sombre     Système",null))
         gc.addView(compactLine("◎","Langue","Français",null))
-        gc.addView(compactLine("●","Son et vibrations","",settingsToggle(true)))
-        gc.addView(compactLine("★","Animations","Effets visuels et transitions",settingsToggle(true)))
+        gc.addView(compactLine("●","Son et vibrations","Activé",null))
+        gc.addView(compactLine("★","Animations","Effets visuels et transitions",null))
         gb.addView(gc,LinearLayout.LayoutParams(0,-2,3f))
         gb.addView(ImageView(this).apply{setImageResource(R.drawable.ui_settings_scene);scaleType=ImageView.ScaleType.CENTER_CROP},LinearLayout.LayoutParams(0,dp(205),2f).apply{marginStart=dp(10)})
         general.addView(gb); addPanel(general)
@@ -1350,11 +1350,11 @@ class MainActivity : AppCompatActivity() {
             arrayOf("✧","Activer le tri automatique","Analyse et classe automatiquement les nouveaux fichiers.","auto_sort"),
             arrayOf("▱","Proposer une catégorie","Suggestion modifiable.","auto_suggest"),
             arrayOf("⊞","Créer une catégorie si besoin","Création automatique si nécessaire.","auto_create")
-        ).forEach{a->auto.addView(compactLine(a[0],a[1],a[2],settingsToggle(a[3],false)))}
+        ).forEach{a->auto.addView(compactLine(a[0],a[1],a[2]) { val v=!prefs.getBoolean(a[3],false); prefs.edit().putBoolean(a[3],v).apply(); showSettings() })}
         mid.addView(auto,LinearLayout.LayoutParams(0,-2,3f).apply{marginEnd=dp(5)})
         val types=compactPanel("Types de fichiers à analyser","Choisis les sources prises en compte")
         listOf(arrayOf("▧","Images","auto_type_images"),arrayOf("▶","Vidéos","auto_type_videos"),arrayOf("▤","Captures d’écran","auto_type_screenshots"),arrayOf("↓","Téléchargements","auto_type_downloads"),arrayOf("◉","Partages","auto_type_shares"),arrayOf("▣","Autres","auto_type_other")).forEach{a->
-            types.addView(compactLine(a[0],a[1],"",settingsToggle(a[2],a[2]!="auto_type_other")))
+            types.addView(compactLine(a[0],a[1],if(prefs.getBoolean(a[2],a[2]!="auto_type_other")) "Activé" else "Désactivé") { val d=a[2]!="auto_type_other"; val v=!prefs.getBoolean(a[2],d); prefs.edit().putBoolean(a[2],v).apply(); showSettings() })
         }
         mid.addView(types,LinearLayout.LayoutParams(0,-2,2f).apply{marginStart=dp(5)}); addPanel(mid)
 
