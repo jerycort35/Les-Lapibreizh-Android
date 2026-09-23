@@ -113,8 +113,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = black
         window.navigationBarColor = black
-        // Sécurité V0.5.6 : aucun classement automatique tant qu’il n’est pas validé.
-        prefs.edit().putBoolean("auto_sort", false).putBoolean("auto_suggest", false).putBoolean("auto_create", false).apply()
+        // Réglages d’automatisation : valeurs par défaut posées une seule fois.
+        // Les choix de l’utilisateur ne sont jamais réinitialisés au redémarrage.
+        if (!prefs.getBoolean("automation_settings_initialized", false)) {
+            prefs.edit()
+                .putBoolean("auto_sort", false)
+                .putBoolean("auto_suggest", true)
+                .putBoolean("auto_create", false)
+                .putBoolean("source_images", true)
+                .putBoolean("source_videos", true)
+                .putBoolean("source_screenshots", true)
+                .putBoolean("source_downloads", true)
+                .putBoolean("source_shares", true)
+                .putBoolean("source_other", false)
+                .putBoolean("automation_settings_initialized", true)
+                .apply()
+        }
         // Migration unique : préserver les anciennes catégories et ajouter Montages vidéo.
         if (!prefs.getBoolean("v064_video_category_seeded", false)) {
             val categories = savedCategories()
@@ -1204,7 +1218,7 @@ class MainActivity : AppCompatActivity() {
     private fun visualFooter(): ImageView = hero(R.drawable.art_footer_bretagne, 145)
 
     /** V066 — native controls arranged like the approved compact gold mock-up.
-     *  Non-implemented automatic features are descriptive, never live switches.
+     *  Settings controls are persistent; the classification engine is connected in a later phase.
      */
     private fun compactPanel(title: String, subtitle: String = ""): LinearLayout =
         LinearLayout(this).apply {
@@ -1250,6 +1264,32 @@ class MainActivity : AppCompatActivity() {
         alpha = if (enabledVisual) 1f else 0.75f
     }
 
+    private fun settingsPrefToggle(key: String, defaultValue: Boolean): TextView {
+        fun applyState(view: TextView, checked: Boolean) {
+            view.text = if (checked) "●" else "○"
+            view.setTextColor(if (checked) black else cream)
+            view.background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(if (checked) Color.rgb(239, 193, 76) else Color.rgb(76, 76, 76))
+                setStroke(dp(1), if (checked) gold else Color.DKGRAY)
+            }
+            view.alpha = if (checked) 1f else 0.82f
+            view.contentDescription = if (checked) "Activé" else "Désactivé"
+        }
+        return TextView(this).apply {
+            textSize = 17f
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            applyState(this, prefs.getBoolean(key, defaultValue))
+            setOnClickListener {
+                val value = !prefs.getBoolean(key, defaultValue)
+                prefs.edit().putBoolean(key, value).apply()
+                applyState(this, value)
+            }
+        }
+    }
+
     private fun settingsButton(symbol: String, title: String, detail: String, onClick: () -> Unit): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1273,7 +1313,7 @@ class MainActivity : AppCompatActivity() {
 
     /** V067 — esprit graphique de la maquette Paramètres validée.
      * La page peut défiler : priorité au rendu noir/or, aux vrais boutons et à la lisibilité.
-     * Les automatismes non implémentés restent purement visuels et inactifs.
+     * Les réglages d’automatisation sont persistants ; le moteur de classement sera branché séparément.
      */
     private fun showSettings() {
         generation++
@@ -1308,17 +1348,17 @@ class MainActivity : AppCompatActivity() {
         }
         left.addView(themeRow)
         left.addView(compactLine("◎", "Langue", "Français"))
-        fun disabledSetting(symbol:String,title:String,detail:String) {
+        fun generalSetting(symbol:String,title:String,detail:String,key:String,defaultValue:Boolean) {
             val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(5),dp(3),dp(5),dp(3)) }
             row.addView(simpleLabel(symbol,20f,gold),LinearLayout.LayoutParams(dp(32),dp(38)))
             val tx=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}
-            tx.addView(simpleLabel(title,11f,cream)); tx.addView(simpleLabel(detail,8.5f,Color.rgb(190,180,163)))
+            tx.addView(simpleLabel(title,11f,cream)); if(detail.isNotBlank()) tx.addView(simpleLabel(detail,8.5f,Color.rgb(190,180,163)))
             row.addView(tx,LinearLayout.LayoutParams(0,-2,1f))
-            row.addView(settingsToggle(false),LinearLayout.LayoutParams(dp(48),dp(26)))
+            row.addView(settingsPrefToggle(key,defaultValue),LinearLayout.LayoutParams(dp(48),dp(26)))
             left.addView(row)
         }
-        disabledSetting("●","Son et vibrations","À venir")
-        disabledSetting("★","Animations","Effets visuels et transitions · à venir")
+        generalSetting("●","Son et vibrations","","ui_sound",true)
+        generalSetting("★","Animations","Effets visuels et transitions","ui_animations",true)
         generalBody.addView(left, LinearLayout.LayoutParams(0,-2,0.58f).apply { rightMargin=dp(5) })
         generalBody.addView(ImageView(this).apply {
             setImageResource(R.drawable.ui_settings_scene)
@@ -1333,40 +1373,69 @@ class MainActivity : AppCompatActivity() {
         val imports=compactPanel("▱  Import des albums existants","Ajoute tes photos et vidéos déjà présentes sur ton téléphone")
         val importRow=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL}
         importRow.addView(settingsButton("▧","Importer depuis la galerie","Sélectionne un ou plusieurs albums") {showAlbumImport()},LinearLayout.LayoutParams(0,-2,1f).apply {rightMargin=dp(3)})
-        importRow.addView(settingsButton("⇥","Importer tous les albums","Présélectionne les albums détectés") {showAlbumImport(true)},LinearLayout.LayoutParams(0,-2,1f).apply {leftMargin=dp(3)})
+        importRow.addView(settingsButton("⇥","Importer tous les albums","Analyse et propose un classement automatique") {showAlbumImport(true)},LinearLayout.LayoutParams(0,-2,1f).apply {leftMargin=dp(3)})
         imports.addView(importRow)
         layout.addView(imports,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
 
         val autoRow=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.TOP}
-        val auto=compactPanel("✦  Tri automatique","Laisse l’application classer tes fichiers · fonctions à venir")
+        val auto=compactPanel("✦  Tri automatique","Trois réglages indépendants · tes choix sont mémorisés")
         listOf(
-            Triple("✧","Activer le tri automatique","Analyse des nouveaux fichiers"),
-            Triple("▱","Proposer une catégorie","Suggestion modifiable"),
-            Triple("⊞","Créer une catégorie si besoin","Création automatique")
-        ).forEach { (symbol,title,detail) ->
+            arrayOf("✧","Activer le tri automatique","Analyse des nouveaux fichiers","auto_sort","false"),
+            arrayOf("▱","Proposer une catégorie","Suggestion modifiable","auto_suggest","true"),
+            arrayOf("⊞","Créer une catégorie si besoin","Création autorisée si nécessaire","auto_create","false")
+        ).forEach { item ->
             val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(3),dp(4),dp(3))}
-            row.addView(simpleLabel(symbol,19f,gold),LinearLayout.LayoutParams(dp(30),dp(38)))
-            val tx=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};tx.addView(simpleLabel(title,10.5f,cream));tx.addView(simpleLabel("$detail · à venir",8.5f,Color.rgb(190,180,163)))
-            row.addView(tx,LinearLayout.LayoutParams(0,-2,1f));row.addView(settingsToggle(false),LinearLayout.LayoutParams(dp(45),dp(25)))
+            row.addView(simpleLabel(item[0],19f,gold),LinearLayout.LayoutParams(dp(30),dp(38)))
+            val tx=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}
+            tx.addView(simpleLabel(item[1],10.5f,cream));tx.addView(simpleLabel(item[2],8.5f,Color.rgb(190,180,163)))
+            row.addView(tx,LinearLayout.LayoutParams(0,-2,1f))
+            row.addView(settingsPrefToggle(item[3],item[4].toBoolean()),LinearLayout.LayoutParams(dp(45),dp(25)))
             auto.addView(row)
         }
         autoRow.addView(auto,LinearLayout.LayoutParams(0,-2,0.62f).apply {rightMargin=dp(3)})
-        val types=compactPanel("Types de fichiers à analyser","Filtres futurs · inactifs")
-        listOf("▧  Images","▶  Vidéos","▤  Captures d’écran","↓  Téléchargements","◉  Partages","▣  Autres").forEach { label ->
+        val types=compactPanel("Types de fichiers à analyser","Choisis les sources prises en compte")
+        listOf(
+            Triple("▧  Images","source_images",true),
+            Triple("▶  Vidéos","source_videos",true),
+            Triple("▤  Captures d’écran","source_screenshots",true),
+            Triple("↓  Téléchargements","source_downloads",true),
+            Triple("◉  Partages","source_shares",true),
+            Triple("▣  Autres","source_other",false)
+        ).forEach { (label,key,defaultValue) ->
             val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-            row.addView(simpleLabel(label,9.5f,cream),LinearLayout.LayoutParams(0,dp(28),1f));row.addView(settingsToggle(false),LinearLayout.LayoutParams(dp(38),dp(21)))
+            row.addView(simpleLabel(label,9.5f,cream),LinearLayout.LayoutParams(0,dp(28),1f))
+            row.addView(settingsPrefToggle(key,defaultValue),LinearLayout.LayoutParams(dp(38),dp(21)))
             types.addView(row)
         }
         autoRow.addView(types,LinearLayout.LayoutParams(0,-2,0.38f).apply {leftMargin=dp(3)})
         layout.addView(autoRow,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
 
         val categories=compactPanel("▱  Gestion des catégories","Organise tes catégories selon tes préférences")
-        categories.addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre") {showCategoryManager(false,CategoryEntry.SETTINGS)})
+        val categoryBody=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+        categoryBody.addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre") {showCategoryManager(false,CategoryEntry.SETTINGS)},LinearLayout.LayoutParams(0,-2,0.64f).apply {rightMargin=dp(5)})
+        categoryBody.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ui_category_scene);scaleType=ImageView.ScaleType.CENTER_CROP
+            contentDescription="Aperçu de la gestion des catégories"
+            background=GradientDrawable().apply {cornerRadius=dp(9).toFloat();setColor(black)};clipToOutline=true
+        },LinearLayout.LayoutParams(0,dp(78),0.36f))
+        categories.addView(categoryBody)
         layout.addView(categories,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
 
         val duplicateRow=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.TOP}
-        val duplicates=compactPanel("▣  Gestion des doublons","Choisis l’action lors de la détection de doublons")
-        duplicates.addView(settingsButton("▣","Analyser les doublons","Décision manuelle avant toute corbeille") {findDuplicates()})
+        val duplicates=compactPanel("▣  Gestion des doublons","Choisis l’action par défaut lors de la détection de doublons")
+        duplicates.addView(simpleLabel("Action par défaut",9.5f,cream))
+        val duplicateChoices=arrayOf("Me demander à chaque fois","Déplacer quand même","Déplacer vers Autres","Ignorer")
+        val duplicateSpinner=Spinner(this).apply {
+            adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,duplicateChoices)
+            val saved=prefs.getString("duplicate_default","Me demander à chaque fois") ?: "Me demander à chaque fois"
+            setSelection(duplicateChoices.indexOf(saved).coerceAtLeast(0))
+            onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{
+                override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:View?,position:Int,id:Long){prefs.edit().putString("duplicate_default",duplicateChoices[position]).apply()}
+                override fun onNothingSelected(parent:android.widget.AdapterView<*>?){ }
+            }
+        }
+        duplicates.addView(duplicateSpinner,LinearLayout.LayoutParams(-1,dp(46)).apply {bottomMargin=dp(4)})
+        duplicates.addView(settingsButton("▣","Analyser les doublons","Comparaison avant toute corbeille") {findDuplicates()})
         duplicateRow.addView(duplicates,LinearLayout.LayoutParams(0,-2,0.62f).apply {rightMargin=dp(3)})
         val duplicateOptions=compactPanel("Options disponibles")
         listOf("✓  Déplacer quand même","✓  Déplacer vers Autres","✓  Ignorer","✓  Appliquer ce choix aux autres doublons").forEach {duplicateOptions.addView(simpleLabel(it,9f,Color.rgb(104,205,123)))}
@@ -1378,7 +1447,8 @@ class MainActivity : AppCompatActivity() {
         try {
             val stats=StatFs(Environment.getDataDirectory().path);val total=stats.totalBytes.coerceAtLeast(1L);val free=stats.availableBytes.coerceIn(0L,total);val used=total-free
             storage.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply {max=1000;progress=(used*1000.0/total).toInt().coerceIn(0,1000);progressTintList=android.content.res.ColorStateList.valueOf(gold)},LinearLayout.LayoutParams(-1,dp(10)))
-            storage.addView(simpleLabel("${formatBytes(used)} utilisés sur ${formatBytes(total)}",10f,cream))
+            val percent=(used*100.0/total).toInt().coerceIn(0,100)
+            storage.addView(simpleLabel("${formatBytes(used)} utilisés sur ${formatBytes(total)}     $percent %",10f,cream))
         } catch (_:Exception) {storage.addView(simpleLabel("Données indisponibles",10f,cream))}
         finalRow.addView(storage,LinearLayout.LayoutParams(0,-2,0.50f).apply {rightMargin=dp(3)})
         val other=compactPanel("•••  Autres options")
