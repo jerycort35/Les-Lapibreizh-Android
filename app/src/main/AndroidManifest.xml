@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <application android:allowBackup="true" android:icon="@drawable/lapibreizh_icon" android:label="Les Lapibreizh" android:theme="@style/AppTheme">
+    <application android:allowBackup="true" android:icon="@drawable/ui_brand_center" android:label="Les Lapibreizh" android:theme="@style/AppTheme">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
