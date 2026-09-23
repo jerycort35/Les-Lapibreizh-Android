@@ -1316,88 +1316,82 @@ class MainActivity : AppCompatActivity() {
      * Les réglages d’automatisation sont persistants ; le moteur de classement sera branché séparément.
      */
     private fun showSettings() {
-        generation++; screenMode="settings"; route=Route.SETTINGS; selected.clear()
-        val page=root().apply { setPadding(dp(14),dp(8),dp(14),dp(12)) }
-        page.addView(brandHeader("Retour","⚙ Paramètres",{showHome()}))
-        page.addView(LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(20),dp(10),dp(20),dp(10))
-            addView(heading("⚙  Paramètres",29f),LinearLayout.LayoutParams(0,-2,1f))
-            addView(TextView(this@MainActivity).apply { text="Des souvenirs\nà ton image ♡";textSize=14f;setTextColor(gold);gravity=Gravity.END },LinearLayout.LayoutParams(dp(150),-2))
-        })
-        fun addPanel(v:View){ page.addView(v,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(9)}) }
+        generation++
+        screenMode = "settings"
+        route = Route.SETTINGS
+        selected.clear()
 
-        val general=compactPanel("⚙  Général","Personnalise l’apparence et le fonctionnement de l’application")
-        val gb=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val gc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        gc.addView(compactLine("◉","Thème","Clair     ● Sombre     Système",null))
-        gc.addView(compactLine("◎","Langue","Français",null))
-        gc.addView(compactLine("●","Son et vibrations","Activé",null))
-        gc.addView(compactLine("★","Animations","Effets visuels et transitions",null))
-        gb.addView(gc,LinearLayout.LayoutParams(0,-2,3f))
-        gb.addView(ImageView(this).apply{setImageResource(R.drawable.ui_settings_scene);scaleType=ImageView.ScaleType.CENTER_CROP},LinearLayout.LayoutParams(0,dp(205),2f).apply{marginStart=dp(10)})
-        general.addView(gb); addPanel(general)
+        val content = root()
+        content.addView(brandHeader("Retour", "⚙ Paramètres", { showHome() }))
+        content.addView(visualTitle("⚙", "Paramètres", "Des souvenirs à ton image ♡"))
 
-        val imports=compactPanel("▱  Import des albums existants","Ajoute tes photos et vidéos déjà présentes sur ton téléphone")
-        imports.addView(LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL
-            addView(settingsButton("▧","Importer depuis la galerie","Sélectionne un ou plusieurs albums"){showAlbumImport()},LinearLayout.LayoutParams(0,dp(96),1f).apply{marginEnd=dp(5)})
-            addView(settingsButton("⇥","Importer tous les albums","Analyse et propose un classement automatique"){showAlbumImport(true)},LinearLayout.LayoutParams(0,dp(96),1f).apply{marginStart=dp(5)})
-        }); addPanel(imports)
+        val general = section("Général", "Personnalise l’application")
+        general.addView(simpleLabel("Thème : Sombre", 14f, cream))
+        general.addView(simpleLabel("Langue : Français", 14f, cream))
+        general.addView(switchRow("Son et vibrations", "settings_sound"))
+        general.addView(switchRow("Animations", "settings_animations"))
+        content.addView(general, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
 
-        val mid=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val auto=compactPanel("✦  Tri automatique","Laisse l’application classer tes fichiers")
-        listOf(
-            arrayOf("✧","Activer le tri automatique","Analyse et classe automatiquement les nouveaux fichiers.","auto_sort"),
-            arrayOf("▱","Proposer une catégorie","Suggestion modifiable.","auto_suggest"),
-            arrayOf("⊞","Créer une catégorie si besoin","Création automatique si nécessaire.","auto_create")
-        ).forEach{a->auto.addView(compactLine(a[0],a[1],a[2]) { val v=!prefs.getBoolean(a[3],false); prefs.edit().putBoolean(a[3],v).apply(); showSettings() })}
-        mid.addView(auto,LinearLayout.LayoutParams(0,-2,3f).apply{marginEnd=dp(5)})
-        val types=compactPanel("Types de fichiers à analyser","Choisis les sources prises en compte")
-        listOf(arrayOf("▧","Images","auto_type_images"),arrayOf("▶","Vidéos","auto_type_videos"),arrayOf("▤","Captures d’écran","auto_type_screenshots"),arrayOf("↓","Téléchargements","auto_type_downloads"),arrayOf("◉","Partages","auto_type_shares"),arrayOf("▣","Autres","auto_type_other")).forEach{a->
-            types.addView(compactLine(a[0],a[1],if(prefs.getBoolean(a[2],a[2]!="auto_type_other")) "Activé" else "Désactivé") { val d=a[2]!="auto_type_other"; val v=!prefs.getBoolean(a[2],d); prefs.edit().putBoolean(a[2],v).apply(); showSettings() })
+        val imports = section("Import des albums existants", "Ajoute les médias déjà présents sur ton téléphone")
+        imports.addView(primaryAction("Importer depuis la galerie") { showAlbumImport() },
+            LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(7) })
+        imports.addView(primaryAction("Importer tous les albums") { showAlbumImport(true) },
+            LinearLayout.LayoutParams(-1,dp(58)))
+        content.addView(imports, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+
+        val auto = section("Tri automatique", "Trois réglages indépendants")
+        auto.addView(switchRow("Activer le tri automatique", "auto_sort"))
+        auto.addView(switchRow("Proposer une catégorie", "auto_suggest"))
+        auto.addView(switchRow("Créer une catégorie si besoin", "auto_create"))
+        content.addView(auto, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+
+        val types = section("Types de fichiers à analyser", "Choisis les sources prises en compte")
+        types.addView(switchRow("Images", "auto_type_images"))
+        types.addView(switchRow("Vidéos", "auto_type_videos"))
+        types.addView(switchRow("Captures d’écran", "auto_type_screenshots"))
+        types.addView(switchRow("Téléchargements", "auto_type_downloads"))
+        types.addView(switchRow("Partages (WhatsApp, etc.)", "auto_type_shares"))
+        types.addView(switchRow("Autres", "auto_type_other"))
+        content.addView(types, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+
+        val cats = section("Gestion des catégories", "Nom, miniature et organisation")
+        cats.addView(primaryAction("Modifier les catégories") {
+            showCategoryManager(false, CategoryEntry.SETTINGS)
+        }, LinearLayout.LayoutParams(-1,dp(58)))
+        content.addView(cats, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+
+        val duplicates = section("Gestion des doublons", "Détection et comparaison avant toute suppression")
+        duplicates.addView(primaryAction("Analyser les doublons") { findDuplicates() },
+            LinearLayout.LayoutParams(-1,dp(58)))
+        content.addView(duplicates, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+
+        val other = section("Autres options")
+        other.addView(action("Vider le cache") {
+            AlertDialog.Builder(this)
+                .setTitle("Vider le cache ?")
+                .setMessage("Tes médias et classements ne seront pas supprimés.")
+                .setPositiveButton("Vider") { _, _ ->
+                    bitmapCache.evictAll()
+                    Toast.makeText(this, "Cache vidé", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Annuler", null)
+                .show()
+        }, LinearLayout.LayoutParams(-1,dp(56)).apply { bottomMargin=dp(7) })
+        other.addView(dangerAction("Réinitialiser l’application") { confirmReset() },
+            LinearLayout.LayoutParams(-1,dp(56)))
+        content.addView(other, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(14) })
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
         }
-        mid.addView(types,LinearLayout.LayoutParams(0,-2,2f).apply{marginStart=dp(5)}); addPanel(mid)
-
-        val cats=compactPanel("▱  Gestion des catégories","Organise tes catégories selon tes préférences")
-        cats.addView(LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL
-            addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre."){showCategoryManager(false,CategoryEntry.SETTINGS)},LinearLayout.LayoutParams(0,dp(88),3f).apply{marginEnd=dp(8)})
-            addView(ImageView(this@MainActivity).apply{setImageResource(R.drawable.ui_category_scene);scaleType=ImageView.ScaleType.CENTER_CROP},LinearLayout.LayoutParams(0,dp(88),2f))
-        }); addPanel(cats)
-
-        val dr=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val dup=compactPanel("▣  Gestion des doublons","Choisis l’action par défaut lors de la détection de doublons")
-        dup.addView(simpleLabel("Action par défaut",12f,cream))
-        val choices=arrayOf("Me demander à chaque fois","Déplacer quand même","Déplacer vers Autres","Ignorer")
-        dup.addView(Spinner(this).apply{
-            adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,choices)
-            setSelection(prefs.getInt("duplicate_default",0).coerceIn(0,3))
-            onItemSelectedListener=object:AdapterView.OnItemSelectedListener{
-                override fun onNothingSelected(parent:AdapterView<*>?){}
-                override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long){prefs.edit().putInt("duplicate_default",position).apply()}
-            }
-        },LinearLayout.LayoutParams(-1,dp(52)))
-        dup.addView(settingsButton("▣","Analyser les doublons","Comparaison manuelle avant toute corbeille"){findDuplicates()},LinearLayout.LayoutParams(-1,dp(82)))
-        dr.addView(dup,LinearLayout.LayoutParams(0,-2,3f).apply{marginEnd=dp(5)})
-        val opts=compactPanel("Options disponibles","")
-        listOf("✓  Déplacer quand même","✓  Déplacer vers Autres","✓  Ignorer","✓  Appliquer ce choix aux autres doublons").forEach{opts.addView(simpleLabel(it,12f,Color.rgb(94,190,108)))}
-        dr.addView(opts,LinearLayout.LayoutParams(0,-2,2f).apply{marginStart=dp(5)}); addPanel(dr)
-
-        val br=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val storage=compactPanel("▬  Espace de stockage","Voir l’espace utilisé et optimiser ton stockage")
-        val stat=StatFs(Environment.getDataDirectory().path); val total=stat.blockCountLong*stat.blockSizeLong; val free=stat.availableBlocksLong*stat.blockSizeLong; val used=(total-free).coerceAtLeast(0); val pc=if(total>0)((used*100)/total).toInt() else 0
-        storage.addView(ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply{max=100;progress=pc},LinearLayout.LayoutParams(-1,dp(18)))
-        storage.addView(simpleLabel("${formatBytes(used)} utilisés sur ${formatBytes(total)}     $pc %",12f,cream))
-        br.addView(storage,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(5)})
-        val other=compactPanel("•••  Autres options","")
-        other.addView(settingsButton("⌁","Vider le cache",""){bitmapCache.evictAll();Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(-1,dp(60)))
-        other.addView(settingsButton("↶","Réinitialiser l’application",""){confirmReset()},LinearLayout.LayoutParams(-1,dp(60)))
-        other.addView(settingsButton("ⓘ","À propos",""){AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Médiathèque Les Lapibreizh").setPositiveButton("OK",null).show()},LinearLayout.LayoutParams(-1,dp(60)))
-        br.addView(other,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(5)}); page.addView(br)
-
-        page.addView(ImageView(this).apply{setImageResource(R.drawable.art_footer_bretagne);scaleType=ImageView.ScaleType.CENTER_CROP},LinearLayout.LayoutParams(-1,dp(130)).apply{topMargin=dp(14)})
-        val scroll=ScrollView(this).apply{setBackgroundColor(black);addView(page)}
-        setContentView(LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(black);addView(scroll,LinearLayout.LayoutParams(-1,0,1f));addView(navBar(Route.SETTINGS),LinearLayout.LayoutParams(-1,dp(65)))})
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(black)
+            addView(scroll, LinearLayout.LayoutParams(-1,0,1f))
+            addView(navBar(Route.SETTINGS), LinearLayout.LayoutParams(-1,dp(65)))
+        }
+        setContentView(screen)
     }
 
     private fun exitCategoryManager() {
