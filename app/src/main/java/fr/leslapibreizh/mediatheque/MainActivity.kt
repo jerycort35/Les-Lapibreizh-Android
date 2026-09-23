@@ -1223,14 +1223,14 @@ class MainActivity : AppCompatActivity() {
     private fun compactPanel(title: String, subtitle: String = ""): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(9), dp(7), dp(9), dp(8))
+            setPadding(dp(10), dp(9), dp(10), dp(10))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(15, 14, 12))
                 cornerRadius = dp(11).toFloat()
                 setStroke(dp(1), Color.rgb(111, 92, 57))
             }
-            addView(simpleLabel(title, 15f, gold))
-            if (subtitle.isNotBlank()) addView(simpleLabel(subtitle, 10f, cream))
+            addView(simpleLabel(title, 16f, gold))
+            if (subtitle.isNotBlank()) addView(simpleLabel(subtitle, 10.5f, Color.rgb(205,197,184)))
         }
 
     private fun compactLine(symbol: String, title: String, detail: String = "", onClick: (() -> Unit)? = null): LinearLayout =
@@ -1366,7 +1366,7 @@ class MainActivity : AppCompatActivity() {
             contentDescription="Les Lapibreizh sur la côte bretonne"
             background=GradientDrawable().apply { cornerRadius=dp(9).toFloat();setColor(black) }
             clipToOutline=true
-        }, LinearLayout.LayoutParams(0,dp(170),0.42f))
+        }, LinearLayout.LayoutParams(0,dp(154),0.42f))
         general.addView(generalBody)
         layout.addView(general, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
 
@@ -1378,11 +1378,11 @@ class MainActivity : AppCompatActivity() {
         layout.addView(imports,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
 
         val autoRow=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.TOP}
-        val auto=compactPanel("✦  Tri automatique","Trois réglages indépendants · tes choix sont mémorisés")
+        val auto=compactPanel("✦  Tri automatique","Laisse l’application classer tes fichiers")
         listOf(
-            arrayOf("✧","Activer le tri automatique","Analyse des nouveaux fichiers","auto_sort","false"),
-            arrayOf("▱","Proposer une catégorie","Suggestion modifiable","auto_suggest","true"),
-            arrayOf("⊞","Créer une catégorie si besoin","Création autorisée si nécessaire","auto_create","false")
+            arrayOf("✧","Activer le tri automatique","Analyse et classe automatiquement les nouveaux fichiers.","auto_sort","false"),
+            arrayOf("▱","Proposer une catégorie","L’application suggère la meilleure catégorie (modifiable).","auto_suggest","true"),
+            arrayOf("⊞","Créer une catégorie si besoin","L’application peut créer une nouvelle catégorie automatiquement.","auto_create","false")
         ).forEach { item ->
             val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(4),dp(3),dp(4),dp(3))}
             row.addView(simpleLabel(item[0],19f,gold),LinearLayout.LayoutParams(dp(30),dp(38)))
@@ -1399,7 +1399,7 @@ class MainActivity : AppCompatActivity() {
             Triple("▶  Vidéos","source_videos",true),
             Triple("▤  Captures d’écran","source_screenshots",true),
             Triple("↓  Téléchargements","source_downloads",true),
-            Triple("◉  Partages","source_shares",true),
+            Triple("◉  Partages (WhatsApp, etc.)","source_shares",true),
             Triple("▣  Autres","source_other",false)
         ).forEach { (label,key,defaultValue) ->
             val row=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
@@ -1412,12 +1412,12 @@ class MainActivity : AppCompatActivity() {
 
         val categories=compactPanel("▱  Gestion des catégories","Organise tes catégories selon tes préférences")
         val categoryBody=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        categoryBody.addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre") {showCategoryManager(false,CategoryEntry.SETTINGS)},LinearLayout.LayoutParams(0,-2,0.64f).apply {rightMargin=dp(5)})
+        categoryBody.addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre.") {showCategoryManager(false,CategoryEntry.SETTINGS)},LinearLayout.LayoutParams(0,-2,0.64f).apply {rightMargin=dp(5)})
         categoryBody.addView(ImageView(this).apply {
             setImageResource(R.drawable.ui_category_scene);scaleType=ImageView.ScaleType.CENTER_CROP
             contentDescription="Aperçu de la gestion des catégories"
             background=GradientDrawable().apply {cornerRadius=dp(9).toFloat();setColor(black)};clipToOutline=true
-        },LinearLayout.LayoutParams(0,dp(78),0.36f))
+        },LinearLayout.LayoutParams(0,dp(92),0.36f))
         categories.addView(categoryBody)
         layout.addView(categories,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
 
@@ -1435,7 +1435,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         duplicates.addView(duplicateSpinner,LinearLayout.LayoutParams(-1,dp(46)).apply {bottomMargin=dp(4)})
-        duplicates.addView(settingsButton("▣","Analyser les doublons","Comparaison avant toute corbeille") {findDuplicates()})
+        duplicates.addView(settingsButton("▣","Analyser les doublons","Comparaison manuelle avant toute corbeille") {findDuplicates()})
         duplicateRow.addView(duplicates,LinearLayout.LayoutParams(0,-2,0.62f).apply {rightMargin=dp(3)})
         val duplicateOptions=compactPanel("Options disponibles")
         listOf("✓  Déplacer quand même","✓  Déplacer vers Autres","✓  Ignorer","✓  Appliquer ce choix aux autres doublons").forEach {duplicateOptions.addView(simpleLabel(it,9f,Color.rgb(104,205,123)))}
@@ -1457,7 +1457,7 @@ class MainActivity : AppCompatActivity() {
         other.addView(compactLine("ⓘ","À propos",onClick={val version=try{packageManager.getPackageInfo(packageName,0).versionName}catch(_:Exception){"Version inconnue"};AlertDialog.Builder(this).setTitle("Les Lapibreizh — La Médiathèque").setMessage("Version $version\n\nClassement logique : les fichiers originaux restent en place.").setPositiveButton("Fermer",null).show()}))
         finalRow.addView(other,LinearLayout.LayoutParams(0,-2,0.50f).apply {leftMargin=dp(3)})
         layout.addView(finalRow,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(6)})
-        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(105)))
+        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(145)))
 
         val page=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setBackgroundColor(black)}
         page.addView(ScrollView(this).apply {setBackgroundColor(black);addView(layout)},LinearLayout.LayoutParams(-1,0,1f))
