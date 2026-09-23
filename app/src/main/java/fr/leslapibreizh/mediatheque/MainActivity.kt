@@ -1348,81 +1348,51 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showSettings() {
         generation++; screenMode="settings"; route=Route.SETTINGS; selected.clear()
-        val content=root().apply { setPadding(dp(8),dp(5),dp(8),dp(8)) }
-        content.addView(brandHeader("Retour","⚙ Paramètres",{showHome()}))
-        content.addView(visualTitle("⚙","Paramètres","Des souvenirs à ton image ♡"))
-
-        val general=compactPanel("⚙  Général","Personnalise l’apparence et le fonctionnement de l’application")
-        val generalBody=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        val controls=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        controls.addView(themeSelector())
-        controls.addView(choiceLine("◎","Langue","Français") {
-            AlertDialog.Builder(this@MainActivity).setTitle("Langue").setSingleChoiceItems(arrayOf("Français"),0,null).setPositiveButton("OK",null).show()
-        })
-        controls.addView(prefLine("●","Son et vibrations","","settings_sound",true))
-        controls.addView(prefLine("★","Animations","Effets visuels et transitions","settings_animations",true))
-        generalBody.addView(controls,LinearLayout.LayoutParams(0,-2,0.60f))
-        generalBody.addView(scenicImage(R.drawable.ui_settings_scene,150),LinearLayout.LayoutParams(0,dp(150),0.40f).apply { marginStart=dp(6) })
-        general.addView(generalBody)
-        content.addView(general,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(7)})
-
-        val imports=compactPanel("▱  Import des albums existants","Ajoute tes photos et vidéos déjà présentes sur ton téléphone")
-        val importRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        importRow.addView(settingsButton("▧","Importer depuis la galerie","Sélectionne un ou plusieurs albums") {showAlbumImport()},LinearLayout.LayoutParams(0,dp(66),1f).apply{marginEnd=dp(3)})
-        importRow.addView(settingsButton("⇩","Importer tous les albums","Analyse et propose un classement") {showAlbumImport(true)},LinearLayout.LayoutParams(0,dp(66),1f).apply{marginStart=dp(3)})
-        imports.addView(importRow);content.addView(imports,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
-
-        val two=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        val auto=compactPanel("✦  Tri automatique","Laisse l’application classer tes fichiers")
-        auto.addView(prefLine("✦","Activer le tri automatique","Analyse les nouveaux fichiers","auto_sort",false))
-        auto.addView(prefLine("▱","Proposer une catégorie","Suggestion modifiable","auto_suggest",true))
-        auto.addView(prefLine("＋","Créer une catégorie si besoin","Création automatique autorisée","auto_create",false))
-        val types=compactPanel("Types de fichiers à analyser")
-        types.addView(prefLine("▧","Images","","source_images",true))
-        types.addView(prefLine("▶","Vidéos","","source_videos",true))
-        types.addView(prefLine("▣","Captures d’écran","","source_screenshots",true))
-        types.addView(prefLine("⇩","Téléchargements","","source_downloads",true))
-        types.addView(prefLine("◉","Partages (WhatsApp, etc.)","","source_shares",true))
-        types.addView(prefLine("▤","Autres","","source_other",false))
-        two.addView(auto,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(3)})
-        two.addView(types,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(3)})
-        content.addView(two,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
-
-        val cats=compactPanel("▱  Gestion des catégories","Organise tes catégories selon tes préférences")
-        val catRow=LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        catRow.addView(settingsButton("⚙","Modifier les catégories","Photo, nom, icône et ordre") {showCategoryManager(false,CategoryEntry.SETTINGS)},LinearLayout.LayoutParams(0,dp(66),0.64f))
-        catRow.addView(scenicImage(R.drawable.ui_category_scene,66),LinearLayout.LayoutParams(0,dp(66),0.36f).apply{marginStart=dp(6)})
-        cats.addView(catRow);content.addView(cats,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
-
-        val dup=compactPanel("▣  Gestion des doublons","Choisis l’action par défaut lors de la détection de doublons")
-        val dupRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val left=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
-        val duplicateMode=prefs.getString("duplicate_default","Me demander à chaque fois") ?: "Me demander à chaque fois"
-        left.addView(choiceLine("","Action par défaut",duplicateMode){
+        fun toggle(key:String, defaultValue:Boolean) {
+            val value=!prefs.getBoolean(key,defaultValue)
+            prefs.edit().putBoolean(key,value).apply()
+            showSettings()
+        }
+        fun duplicateChoice() {
             val opts=arrayOf("Me demander à chaque fois","Déplacer quand même","Déplacer vers Autres","Ignorer")
-            AlertDialog.Builder(this@MainActivity).setTitle("Action par défaut").setItems(opts){_,i->prefs.edit().putString("duplicate_default",opts[i]).apply();showSettings()}.show()
-        })
-        left.addView(settingsButton("⌕","Analyser les doublons","Comparer les fichiers strictement identiques") {findDuplicates()},LinearLayout.LayoutParams(-1,dp(58)))
-        val right=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(4),dp(4))
-            addView(simpleLabel("Options disponibles",11f,gold));addView(simpleLabel("✓ Déplacer quand même",10f,cream));addView(simpleLabel("✓ Déplacer vers Autres",10f,cream));addView(simpleLabel("✓ Ignorer",10f,cream));addView(simpleLabel("✓ Appliquer ce choix aux autres doublons",9.5f,cream))}
-        dupRow.addView(left,LinearLayout.LayoutParams(0,-2,0.55f));dupRow.addView(right,LinearLayout.LayoutParams(0,-2,0.45f))
-        dup.addView(dupRow);content.addView(dup,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
-
-        val bottom=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        val storage=compactPanel("●  Espace de stockage","Voir l’espace utilisé et optimiser ton stockage")
-        val stat=StatFs(Environment.getDataDirectory().path);val total=stat.totalBytes;val free=stat.availableBytes;val used=(total-free).coerceAtLeast(0L);val pct=if(total>0)((used*100)/total).toInt() else 0
-        storage.addView(simpleLabel("${formatBytes(used)} utilisés sur ${formatBytes(total)}   ·   $pct %",10.5f,cream))
-        val other=compactPanel("•••  Autres options")
-        other.addView(compactLine("↻","Vider le cache","" ){AlertDialog.Builder(this@MainActivity).setTitle("Vider le cache ?").setMessage("Tes médias et classements ne seront pas supprimés.").setPositiveButton("Vider"){_,_->bitmapCache.evictAll();Toast.makeText(this@MainActivity,"Cache vidé",Toast.LENGTH_SHORT).show()}.setNegativeButton("Annuler",null).show()})
-        other.addView(compactLine("⟲","Réinitialiser l’application","",{confirmReset()}))
-        other.addView(compactLine("ⓘ","À propos","Version 0.6.18",null))
-        bottom.addView(storage,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(3)});bottom.addView(other,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(3)})
-        content.addView(bottom,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
-        content.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(125)))
-
-        val scroll=ScrollView(this).apply{isFillViewport=true;addView(content)}
-        val screen=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(black);addView(scroll,LinearLayout.LayoutParams(-1,0,1f));addView(navBar(Route.SETTINGS),LinearLayout.LayoutParams(-1,dp(65)))}
-        setContentView(screen)
+            AlertDialog.Builder(this).setTitle("Action par défaut").setItems(opts){_,i->
+                prefs.edit().putString("duplicate_default",opts[i]).apply(); showSettings()
+            }.show()
+        }
+        artworkScreen(
+            R.drawable.ui_settings_exact, 896, 1718,
+            listOf(
+                hs(16,55,135,80,"Retour") { showHome() },
+                hs(175,292,110,48,"Thème clair") { prefs.edit().putString("theme","Clair").apply(); showSettings() },
+                hs(295,292,115,48,"Thème sombre") { prefs.edit().putString("theme","Sombre").apply(); showSettings() },
+                hs(415,292,120,48,"Thème système") { prefs.edit().putString("theme","Système").apply(); showSettings() },
+                hs(175,345,305,52,"Langue") { AlertDialog.Builder(this).setTitle("Langue").setItems(arrayOf("Français")){_,_->}.show() },
+                hs(395,405,85,48,"Son et vibrations") { toggle("settings_sound",true) },
+                hs(395,458,85,48,"Animations") { toggle("settings_animations",true) },
+                hs(25,585,430,90,"Importer depuis la galerie") { showAlbumImport() },
+                hs(460,585,410,90,"Importer tous les albums") { showAlbumImport(true) },
+                hs(470,760,90,52,"Activer le tri automatique") { toggle("auto_sort",false) },
+                hs(470,820,90,52,"Proposer une catégorie") { toggle("auto_suggest",true) },
+                hs(470,880,90,52,"Créer une catégorie si besoin") { toggle("auto_create",false) },
+                hs(805,738,75,45,"Analyser les images") { toggle("source_images",true) },
+                hs(805,780,75,45,"Analyser les vidéos") { toggle("source_videos",true) },
+                hs(805,822,75,45,"Analyser les captures d’écran") { toggle("source_screenshots",true) },
+                hs(805,864,75,45,"Analyser les téléchargements") { toggle("source_downloads",true) },
+                hs(805,906,75,45,"Analyser les partages") { toggle("source_shares",true) },
+                hs(805,948,75,45,"Analyser les autres fichiers") { toggle("source_other",false) },
+                hs(25,1025,540,80,"Modifier les catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) },
+                hs(25,1185,445,65,"Action par défaut des doublons") { duplicateChoice() },
+                hs(25,1125,445,55,"Analyser les doublons") { findDuplicates() },
+                hs(500,1325,365,45,"Vider le cache") { bitmapCache.evictAll(); Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show() },
+                hs(500,1370,365,45,"Réinitialiser l’application") { confirmReset() },
+                hs(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version 0.6.19").setPositiveButton("OK",null).show() },
+                hs(20,1610,155,100,"Accueil") { showHome() },
+                hs(180,1610,170,100,"Galerie") { showMediaDashboard(Route.IMAGES) },
+                hs(355,1610,175,100,"Catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) },
+                hs(535,1610,170,100,"Recherche") { openSearch(Route.IMAGES) },
+                hs(710,1610,175,100,"Paramètres") { showSettings() }
+            )
+        )
     }
 
     private fun exitCategoryManager() {
