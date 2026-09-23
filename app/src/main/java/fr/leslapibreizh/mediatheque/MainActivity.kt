@@ -17,6 +17,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.provider.MediaStore
 import android.util.LruCache
 import android.util.Size
@@ -1348,9 +1352,23 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showSettings() {
         generation++; screenMode="settings"; route=Route.SETTINGS; selected.clear()
-        fun toggle(key:String, defaultValue:Boolean) {
-            val value=!prefs.getBoolean(key,defaultValue)
-            prefs.edit().putBoolean(key,value).apply()
+        // L'automatisme reste volontairement désactivé jusqu'à la dernière étape du projet.
+        prefs.edit().putBoolean("auto_sort", false).putBoolean("auto_suggest", false).putBoolean("auto_create", false).apply()
+
+        fun feedbackEnabled(): Boolean = prefs.getBoolean("settings_sound", true)
+        fun playFeedback() {
+            if (!feedbackEnabled()) return
+            try { ToneGenerator(AudioManager.STREAM_SYSTEM, 45).startTone(ToneGenerator.TONE_PROP_BEEP, 70) } catch (_: Exception) {}
+            try {
+                val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+                if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE))
+                else @Suppress("DEPRECATION") vibrator.vibrate(35)
+            } catch (_: Exception) {}
+        }
+        fun toggleFeedback() {
+            val next=!prefs.getBoolean("settings_sound", true)
+            prefs.edit().putBoolean("settings_sound", next).apply()
+            if (next) playFeedback()
             showSettings()
         }
         fun duplicateChoice() {
@@ -1359,40 +1377,84 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putString("duplicate_default",opts[i]).apply(); showSettings()
             }.show()
         }
-        artworkScreen(
-            R.drawable.ui_settings_exact, 896, 1718,
-            listOf(
-                hs(16,55,135,80,"Retour") { showHome() },
-                hs(175,292,110,48,"Thème clair") { prefs.edit().putString("theme","Clair").apply(); showSettings() },
-                hs(295,292,115,48,"Thème sombre") { prefs.edit().putString("theme","Sombre").apply(); showSettings() },
-                hs(415,292,120,48,"Thème système") { prefs.edit().putString("theme","Système").apply(); showSettings() },
-                hs(175,345,305,52,"Langue") { AlertDialog.Builder(this).setTitle("Langue").setItems(arrayOf("Français")){_,_->}.show() },
-                hs(395,405,85,48,"Son et vibrations") { toggle("settings_sound",true) },
-                hs(395,458,85,48,"Animations") { toggle("settings_animations",true) },
-                hs(25,585,430,90,"Importer depuis la galerie") { showAlbumImport() },
-                hs(460,585,410,90,"Importer tous les albums") { showAlbumImport(true) },
-                hs(470,760,90,52,"Activer le tri automatique") { toggle("auto_sort",false) },
-                hs(470,820,90,52,"Proposer une catégorie") { toggle("auto_suggest",true) },
-                hs(470,880,90,52,"Créer une catégorie si besoin") { toggle("auto_create",false) },
-                hs(805,738,75,45,"Analyser les images") { toggle("source_images",true) },
-                hs(805,780,75,45,"Analyser les vidéos") { toggle("source_videos",true) },
-                hs(805,822,75,45,"Analyser les captures d’écran") { toggle("source_screenshots",true) },
-                hs(805,864,75,45,"Analyser les téléchargements") { toggle("source_downloads",true) },
-                hs(805,906,75,45,"Analyser les partages") { toggle("source_shares",true) },
-                hs(805,948,75,45,"Analyser les autres fichiers") { toggle("source_other",false) },
-                hs(25,1025,540,80,"Modifier les catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) },
-                hs(25,1185,445,65,"Action par défaut des doublons") { duplicateChoice() },
-                hs(25,1125,445,55,"Analyser les doublons") { findDuplicates() },
-                hs(500,1325,365,45,"Vider le cache") { bitmapCache.evictAll(); Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show() },
-                hs(500,1370,365,45,"Réinitialiser l’application") { confirmReset() },
-                hs(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version 0.6.19").setPositiveButton("OK",null).show() },
-                hs(20,1610,155,100,"Accueil") { showHome() },
-                hs(180,1610,170,100,"Galerie") { showMediaDashboard(Route.IMAGES) },
-                hs(355,1610,175,100,"Catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) },
-                hs(535,1610,170,100,"Recherche") { openSearch(Route.IMAGES) },
-                hs(710,1610,175,100,"Paramètres") { showSettings() }
-            )
-        )
+        fun setTheme(name:String) {
+            prefs.edit().putString("theme", name).apply()
+            // Le choix est mémorisé dès maintenant. Les écrans illustrés conservent leur identité noir/or;
+            // les écrans natifs suivront ce choix lors de leur refonte globale.
+            showSettings()
+        }
+
+        val width=resources.displayMetrics.widthPixels
+        val artW=896; val artH=1718
+        val height=(width.toFloat()*artH/artW).toInt()
+        val factor=width.toFloat()/artW
+        val frame=FrameLayout(this)
+        frame.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ui_settings_exact); scaleType=ImageView.ScaleType.FIT_XY
+            contentDescription="Paramètres Les Lapibreizh"
+        },FrameLayout.LayoutParams(width,height))
+
+        fun hit(x:Int,y:Int,w:Int,h:Int,label:String,click:()->Unit) {
+            frame.addView(View(this).apply { isClickable=true; contentDescription=label; setOnClickListener { click() } },
+                FrameLayout.LayoutParams((w*factor).toInt().coerceAtLeast(dp(30)),(h*factor).toInt().coerceAtLeast(dp(30))).apply {
+                    leftMargin=(x*factor).toInt(); topMargin=(y*factor).toInt()
+                })
+        }
+        fun overlay(text:String,x:Int,y:Int,w:Int,h:Int,size:Float=10f,align:Int=Gravity.CENTER,color:Int=cream) {
+            frame.addView(TextView(this).apply {
+                this.text=text; textSize=size; setTextColor(color); gravity=align
+                setBackgroundColor(Color.rgb(20,18,15)); setPadding(dp(2),0,dp(2),0)
+            },FrameLayout.LayoutParams((w*factor).toInt(),(h*factor).toInt()).apply { leftMargin=(x*factor).toInt(); topMargin=(y*factor).toInt() })
+        }
+        fun switchOverlay(on:Boolean,x:Int,y:Int) {
+            val v=TextView(this).apply {
+                text=if(on) "●" else "●"; textSize=12f; gravity=if(on) Gravity.END else Gravity.START
+                setTextColor(if(on) black else Color.rgb(150,145,135)); setPadding(dp(5),0,dp(5),0)
+                background=GradientDrawable().apply { cornerRadius=dp(14).toFloat(); setColor(if(on) gold else Color.rgb(54,52,48)); setStroke(dp(1),if(on) gold else Color.rgb(100,95,85)) }
+            }
+            frame.addView(v,FrameLayout.LayoutParams((62*factor).toInt(),(34*factor).toInt()).apply { leftMargin=(x*factor).toInt(); topMargin=(y*factor).toInt() })
+        }
+
+        // Valeurs réellement calculées sur le stockage partagé principal Android.
+        val stat=StatFs(Environment.getExternalStorageDirectory().path)
+        val total=stat.totalBytes.coerceAtLeast(1L); val free=stat.availableBytes.coerceAtLeast(0L); val used=(total-free).coerceAtLeast(0L)
+        val pct=((used*100L)/total).coerceIn(0,100).toInt()
+        overlay("${formatBytes(used)} utilisés sur ${formatBytes(total)}   ·   $pct %",55,1378,360,34,9.5f,Gravity.CENTER,gold)
+
+        // État visuel des réglages réellement actifs.
+        val theme=prefs.getString("theme","Sombre") ?: "Sombre"
+        val tx=when(theme){"Clair"->175;"Système"->415;else->295}
+        overlay("✓",tx+82,294,24,28,12f,Gravity.CENTER,gold)
+        switchOverlay(prefs.getBoolean("settings_sound",true),405,412)
+        switchOverlay(prefs.getBoolean("settings_animations",true),405,465)
+        // Automatisme : affiché mais verrouillé OFF pour cette étape.
+        switchOverlay(false,478,768); switchOverlay(false,478,828); switchOverlay(false,478,888)
+
+        hit(16,55,135,80,"Retour") { showHome() }
+        hit(175,292,110,48,"Thème clair") { setTheme("Clair") }
+        hit(295,292,115,48,"Thème sombre") { setTheme("Sombre") }
+        hit(415,292,120,48,"Thème système") { setTheme("Système") }
+        // Français uniquement : aucune fausse liste de langues.
+        hit(175,345,305,52,"Langue française") { Toast.makeText(this,"Français",Toast.LENGTH_SHORT).show() }
+        hit(395,405,85,48,"Son et vibrations") { toggleFeedback() }
+        hit(395,458,85,48,"Animations") { prefs.edit().putBoolean("settings_animations",!prefs.getBoolean("settings_animations",true)).apply(); showSettings() }
+        hit(25,585,430,90,"Importer depuis la galerie") { showAlbumImport() }
+        hit(460,585,410,90,"Importer tous les albums") { showAlbumImport(true) }
+        hit(470,760,90,180,"Automatisme désactivé") { Toast.makeText(this,"Tri automatique : dernière étape du projet",Toast.LENGTH_SHORT).show() }
+        hit(805,738,75,255,"Sources automatiques désactivées") { Toast.makeText(this,"Automatisme désactivé pour l’instant",Toast.LENGTH_SHORT).show() }
+        hit(25,1025,540,80,"Modifier les catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) }
+        hit(25,1125,445,55,"Analyser les doublons") { findDuplicates() }
+        hit(25,1185,445,65,"Action par défaut des doublons") { duplicateChoice() }
+        hit(500,1325,365,45,"Vider le cache") { bitmapCache.evictAll(); Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show() }
+        hit(500,1370,365,45,"Réinitialiser l’application") { confirmReset() }
+        hit(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version 0.6.20").setPositiveButton("OK",null).show() }
+        hit(20,1610,155,100,"Accueil") { showHome() }
+        hit(180,1610,170,100,"Galerie") { showMediaDashboard(Route.IMAGES) }
+        hit(355,1610,175,100,"Catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) }
+        hit(535,1610,170,100,"Recherche") { openSearch(Route.IMAGES) }
+        hit(710,1610,175,100,"Paramètres") { showSettings() }
+
+        setContentView(ScrollView(this).apply { isFillViewport=false; setBackgroundColor(black); addView(frame,ViewGroup.LayoutParams(width,height)) })
     }
 
     private fun exitCategoryManager() {
