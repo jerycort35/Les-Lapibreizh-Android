@@ -1415,7 +1415,7 @@ class MainActivity : AppCompatActivity() {
         val other=compactPanel("•••  Autres options")
         other.addView(compactLine("↻","Vider le cache","" ){AlertDialog.Builder(this@MainActivity).setTitle("Vider le cache ?").setMessage("Tes médias et classements ne seront pas supprimés.").setPositiveButton("Vider"){_,_->bitmapCache.evictAll();Toast.makeText(this@MainActivity,"Cache vidé",Toast.LENGTH_SHORT).show()}.setNegativeButton("Annuler",null).show()})
         other.addView(compactLine("⟲","Réinitialiser l’application","",{confirmReset()}))
-        other.addView(compactLine("ⓘ","À propos","Version ${BuildConfig.VERSION_NAME}",null))
+        other.addView(compactLine("ⓘ","À propos","Version 0.6.18",null))
         bottom.addView(storage,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(3)});bottom.addView(other,LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(3)})
         content.addView(bottom,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(7)})
         content.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(125)))
