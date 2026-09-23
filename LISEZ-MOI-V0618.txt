@@ -1,0 +1,10 @@
+Les Lapibreizh V0.6.18 — versionCode 27
+
+- Workflow RELEASE signé restauré.
+- Paramètres : interface compacte noir/or, réglages persistants, import, tri automatique, sources, catégories, doublons, stockage, options.
+- Gestion catégories : création, renommage, icône, ordre, image privée recadrée, suppression sécurisée.
+- Import albums : sélection et suggestions, originaux conservés.
+- Classement en masse : maximum 1000, progression et bilan, classement logique sans déplacement physique des originaux.
+- Doublons : comparaison SHA-256 et aucune suppression automatique.
+- Suppression : maximum 500, double confirmation et confirmation Android sur Android 11+.
+- Ressources d'interface embarquées dans l'application.
