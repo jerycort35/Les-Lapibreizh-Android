@@ -43,9 +43,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
 }
 
-// V0.6.28 : applique la correction UI avant la compilation, sans modifier .github.
-val applyV0628 by tasks.registering(Exec::class) {
+// V0.6.29 : applique la correction UI avant la compilation, sans modifier .github.
+val applyV0629 by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
-    commandLine("python3", "app/apply_v0628.py")
+    commandLine("python3", "app/apply_v0629.py")
 }
-tasks.named("preBuild").configure { dependsOn(applyV0628) }
+tasks.named("preBuild").configure { dependsOn(applyV0629) }
