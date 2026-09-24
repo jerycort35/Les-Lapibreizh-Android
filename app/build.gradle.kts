@@ -12,8 +12,8 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "0.6.21"
+        versionCode = 31
+        versionName = "0.6.22"
     }
     signingConfigs {
         if (hasPrivateSigning) {

@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity() {
         val content = root().apply { setPadding(dp(6),0,dp(6),dp(6)) }
         content.addView(ImageView(this).apply {
             setImageResource(R.drawable.art_images_categories_header)
-            scaleType=ImageView.ScaleType.CENTER_CROP
+            scaleType=ImageView.ScaleType.FIT_CENTER
             adjustViewBounds=true
             contentDescription="Les Lapibreizh · Médiathèque Images"
         }, LinearLayout.LayoutParams(-1,dp(250)))
@@ -538,6 +538,7 @@ class MainActivity : AppCompatActivity() {
                 addView(simpleLabel("${counts[category] ?: 0} images",10f,cream).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(-1,dp(20)))
                 setOnClickListener { openGalleryCategory(category,Route.IMAGES) }
                 setOnLongClickListener {
+                    if (sortMode != 0) return@setOnLongClickListener false
                     val clip=ClipData.newPlainText("category",category)
                     startDragAndDrop(clip,View.DragShadowBuilder(this),category,0); alpha=.55f; true
                 }
@@ -589,7 +590,7 @@ class MainActivity : AppCompatActivity() {
         val manage=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         manage.addView(dangerAction("Supprimer\n(0 / 3 max)") { deleteSelectedCategories(selectedCategories.toList()) }.also{it.tag="deleteCategories"},LinearLayout.LayoutParams(0,dp(62),1f).apply{rightMargin=dp(3)})
         manage.addView(action("☑  Tout sélectionner") {
-            selectedCategories.clear(); selectedCategories.addAll(categories.take(3)); refresh()
+            selectedCategories.clear(); selectedCategories.addAll(categories.take(3)); Toast.makeText(this,"${selectedCategories.size} catégorie(s) sélectionnée(s)",Toast.LENGTH_SHORT).show()
         },LinearLayout.LayoutParams(0,dp(62),1f))
         actions.addView(manage,LinearLayout.LayoutParams(-1,dp(62)).apply{topMargin=dp(4)})
         content.addView(actions)
@@ -706,7 +707,7 @@ class MainActivity : AppCompatActivity() {
     private fun galleryHeader(isVideo: Boolean, onBack: () -> Unit): FrameLayout = FrameLayout(this).apply {
         val image = ImageView(this@MainActivity).apply {
             setImageResource(if (isVideo) R.drawable.art_gallery_videos else R.drawable.art_images_categories_header)
-            scaleType = if (isVideo) ImageView.ScaleType.FIT_XY else ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = if (isVideo) "En-tête Vidéos" else "Les Lapibreizh · Médiathèque Images"
         }
         val width = resources.displayMetrics.widthPixels - dp(24)
