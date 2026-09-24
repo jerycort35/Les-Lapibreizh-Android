@@ -12,8 +12,8 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "0.6.28"
+        versionCode = 36
+        versionName = "0.6.30"
     }
     signingConfigs {
         if (hasPrivateSigning) {
@@ -42,10 +42,13 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
 }
-
-// V0.6.29 : applique la correction UI avant la compilation, sans modifier .github.
 val applyV0629 by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine("python3", "app/apply_v0629.py")
 }
-tasks.named("preBuild").configure { dependsOn(applyV0629) }
+val applyV0630 by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine("python3", "app/apply_v0630.py")
+}
+applyV0630.configure { dependsOn(applyV0629) }
+tasks.named("preBuild").configure { dependsOn(applyV0630) }
