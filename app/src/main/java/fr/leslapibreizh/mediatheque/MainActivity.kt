@@ -492,18 +492,22 @@ class MainActivity : AppCompatActivity() {
         val content = root().apply { setPadding(dp(6),0,dp(6),dp(6)) }
         content.addView(ImageView(this).apply {
             setImageResource(R.drawable.art_images_categories_header)
-            scaleType=ImageView.ScaleType.FIT_CENTER
+            scaleType=ImageView.ScaleType.CENTER_CROP
             adjustViewBounds=true
             contentDescription="Les Lapibreizh · Médiathèque Images"
-        }, LinearLayout.LayoutParams(-1,dp(250)))
-        content.addView(simpleLabel("LES LAPIBREIZH · MÉDIATHÈQUE · IMAGES",20f,gold).apply { gravity=Gravity.CENTER })
+        }, LinearLayout.LayoutParams(-1,dp(330)))
 
         val tools=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         tools.addView(action("⌕  Rechercher une image…") { openSearch(Route.IMAGES) },LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(4)})
         tools.addView(action("☷  Filtres") { openFilters() },LinearLayout.LayoutParams(dp(105),dp(52)))
         content.addView(tools,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
 
-        val customCategories = savedCategories().toMutableList()
+        var customCategories = savedCategories().toMutableList()
+        val legacyNames = setOf("Académie des Lapibreizh","Fiches couleurs","Fiches sportives","Bricolage","Restaurant des Lapibreizh","Voyages de Carnot","Épisodes","Personnages","Lapins réels","Non classées")
+        if (!prefs.getBoolean("images_categories_v2_migrated", false) && customCategories.any { it in legacyNames }) {
+            customCategories = (1..8).map { "Catégorie $it" }.toMutableList()
+            prefs.edit().putString("category_names", customCategories.joinToString("\u001f")).putBoolean("images_categories_v2_migrated", true).apply()
+        }
         val sortMode=prefs.getInt("category_sort_mode",0)
         val categories = when(sortMode){
             1 -> customCategories.sortedBy{it.lowercase()}.toMutableList()
@@ -515,7 +519,7 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putInt("category_sort_mode",which).apply(); showImagesCategories()
             }.show()
         },LinearLayout.LayoutParams(-1,dp(46)).apply{bottomMargin=dp(5)})
-        val counts=mutableMapOf<String,Int>()
+        val counts=customCategories.associateWith { allKnownMediaKeysForCategory(it) }.toMutableMap()
         val grid=GridLayout(this).apply { columnCount=3; alignmentMode=GridLayout.ALIGN_BOUNDS; useDefaultMargins=false }
 
         fun persistOrder() { prefs.edit().putString("category_names",categories.joinToString("\u001f")).putInt("category_sort_mode",0).apply() }
@@ -839,6 +843,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(7), 0, dp(7))
         }
         grid = g
+        if (route == Route.IMAGES && categoryFilter != null && shownItems.isEmpty()) {
+            val empty = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(18),dp(34),dp(18),dp(34))
+                addView(simpleLabel("▣",58f,gold).apply { gravity=Gravity.CENTER })
+                addView(simpleLabel("Aucune image dans cette catégorie",20f,cream).apply { gravity=Gravity.CENTER })
+                addView(simpleLabel("Appuyez sur « Nouvelle image » pour ajouter des images depuis votre galerie.",13f,cream).apply { gravity=Gravity.CENTER })
+                addView(action("＋  Nouvelle image") { pickImagesForCategory() }, LinearLayout.LayoutParams(dp(230),dp(58)).apply { topMargin=dp(18) })
+            }
+            layout.addView(empty, LinearLayout.LayoutParams(-1,0,1f))
+        }
         galleryAdapter = object : BaseAdapter() {
             override fun getCount() = minOf(shownItems.size, visibleLimit)
             override fun getItem(position: Int) = shownItems[position]
