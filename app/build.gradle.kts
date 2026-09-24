@@ -12,24 +12,17 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "0.6.31"
+        versionCode = 38
+        versionName = "0.6.32"
     }
     signingConfigs {
         if (hasPrivateSigning) create("lapibreizh") {
-            storeFile = file(privateKeyFile!!)
-            storePassword = privateKeyPassword
-            keyAlias = "lapibreizh"
-            keyPassword = privateKeyPassword
+            storeFile=file(privateKeyFile!!);storePassword=privateKeyPassword
+            keyAlias="lapibreizh";keyPassword=privateKeyPassword
         }
     }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            if (hasPrivateSigning) signingConfig = signingConfigs.getByName("lapibreizh")
-        }
-    }
-    compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17 }
+    buildTypes { getByName("release") { isMinifyEnabled=false;if(hasPrivateSigning)signingConfig=signingConfigs.getByName("lapibreizh") } }
+    compileOptions { sourceCompatibility=JavaVersion.VERSION_17;targetCompatibility=JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget="17" }
 }
 dependencies {
@@ -37,15 +30,9 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
 }
-val applyV0629 by tasks.registering(Exec::class) {
-    workingDir(rootProject.projectDir); commandLine("python3","app/apply_v0629.py")
-}
-val applyV0630 by tasks.registering(Exec::class) {
-    workingDir(rootProject.projectDir); commandLine("python3","app/apply_v0630.py")
-}
-val applyV0631 by tasks.registering(Exec::class) {
-    workingDir(rootProject.projectDir); commandLine("python3","app/apply_v0631.py")
-}
-applyV0630.configure { dependsOn(applyV0629) }
-applyV0631.configure { dependsOn(applyV0630) }
-tasks.named("preBuild").configure { dependsOn(applyV0631) }
+val applyV0629 by tasks.registering(Exec::class){workingDir(rootProject.projectDir);commandLine("python3","app/apply_v0629.py")}
+val applyV0630 by tasks.registering(Exec::class){workingDir(rootProject.projectDir);commandLine("python3","app/apply_v0630.py")}
+val applyV0632 by tasks.registering(Exec::class){workingDir(rootProject.projectDir);commandLine("python3","app/apply_v0632.py")}
+applyV0630.configure{dependsOn(applyV0629)}
+applyV0632.configure{dependsOn(applyV0630)}
+tasks.named("preBuild").configure{dependsOn(applyV0632)}
