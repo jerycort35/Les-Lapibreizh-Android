@@ -12,8 +12,8 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "0.6.34"
+        versionCode = 41
+        versionName = "0.6.35"
     }
     signingConfigs {
         if (hasPrivateSigning) create("lapibreizh") {
@@ -32,4 +32,14 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+}
+
+/* V0.6.35 : applique le correctif fonctionnel avant compilation. */
+tasks.named("preBuild").configure {
+    doFirst {
+        exec {
+            workingDir(rootProject.projectDir)
+            commandLine("python3", "app/apply_v0635.py")
+        }
+    }
 }
