@@ -1,7 +1,34 @@
-NE COMPTE PAS SEULEMENT LES ÉLÉMENTS À LA RACINE DU ZIP.
+LES LAPIBREIZH — V0.6.33 — PROJET COMPLET POUR GITLING
 
-Le dossier app contient src/main/java et src/main/res avec le code et les visuels.
-Le dossier REFERENCES_VISUELLES contient les autres maquettes d'origine.
-Le dossier .github/workflows contient le workflow (invisible si Android masque les dossiers commençant par un point).
+1. Extraire le ZIP.
+2. Copier tout son contenu à la racine du dépôt Gitling existant,
+   au même niveau que le dossier app et settings.gradle.kts.
+   Accepter le remplacement des fichiers. Ne pas créer un second dossier app.
+3. Dans Gitling : Stage All → Commit → Push.
+   Message de commit : V0.6.33 - Reconstruction des deux pages Images
+4. Dans GitHub → Actions, attendre la réussite de Build Android APK - RELEASE.
+5. Télécharger Les-Lapibreizh-RELEASE-SIGNEE, extraire app-release.apk,
+   puis installer la mise à jour sans désinstaller l'application existante.
 
-Lis CONTROLE_EXTRACTION.txt pour la liste de tous les fichiers, même imbriqués.
+VERSION : versionName 0.6.33 ; versionCode 39.
+
+CHANGEMENTS
+- Deux écrans Images avec une disposition commune mesurée sur les références.
+- En-tête, boutons de partage et navigation issus du graphisme maître.
+- Contrôles natifs, compteurs dynamiques, zone centrale défilante.
+- Conservation des catégories existantes et de leurs images.
+- Les anciens patches Python ne sont plus exécutés lors de la compilation.
+- Recherche, tri, sélection, partage, import et confirmations de suppression.
+- Classement logique conservé : les originaux restent dans la galerie Android.
+  Le bouton Envoyer à la galerie explique cet état et ne crée pas de copie.
+
+SIGNATURE
+L'identité fr.leslapibreizh.mediatheque, la configuration de signature et
+.github/workflows/build-apk.yml sont conservées. GitHub utilise ses secrets
+existants pour signer l'APK. Ce ZIP ne contient aucune clé ni mot de passe.
+
+VALIDATION
+La compilation locale assembleRelease est contrôlée avant livraison.
+La signature permanente est appliquée uniquement par GitHub Actions.
+Le rendu et les interactions sur le téléphone restent à vérifier : envoyer
+les captures des deux pages après installation pour comparaison aux références.

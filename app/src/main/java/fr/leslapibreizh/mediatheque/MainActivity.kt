@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var galleryAdapter: BaseAdapter? = null
     private var selectionActions: LinearLayout? = null
     private var selectionInfo: TextView? = null
+    private var galleryEmptyState: View? = null
     private var generation = 0
     private var duplicatePairs = emptyList<Pair<Media, Media>>()
     private var duplicateIndex = 0
@@ -471,137 +472,160 @@ class MainActivity : AppCompatActivity() {
 
     private fun showVideosCategories() = showCategoryCatalog(true)
 
-    /** V0.6.8: catalogue réellement dynamique et défilant. */
-    private fun showCategoryCatalog(video: Boolean) {
-        generation++
-        screenMode = if (video) "videos-catalog" else "images-catalog"
-        route = if (video) Route.VIDEOS else Route.IMAGES
-        videoCategoryTab = video
-        selected.clear()
-        if (video) { showCategoryManager(true, CategoryEntry.VIDEOS); return }
+    private var exactRefresh: (() -> Unit)? = null
+    private var catalogQuery = ""
+    private var catalogSort = 0
+    private var catalogColumns = 3
+    private val catalogSelected = linkedSetOf<String>()
 
-        val selectedCategories = linkedSetOf<String>()
-        val page = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(black) }
-        val content = root().apply { setPadding(dp(6),0,dp(6),dp(6)) }
-        content.addView(ImageView(this).apply {
-            setImageResource(R.drawable.art_images_categories_banner)
-            scaleType=ImageView.ScaleType.FIT_XY
-            adjustViewBounds=true
-            contentDescription="Les Lapibreizh · Médiathèque Images"
-        }, LinearLayout.LayoutParams(-1,dp(305)))
-
-        val tools=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        tools.addView(action("⌕  Rechercher une image…") { openSearch(Route.IMAGES) },LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(4)})
-        tools.addView(action("☷  Filtres") { openFilters() },LinearLayout.LayoutParams(dp(105),dp(52)))
-        content.addView(tools,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
-
-        var customCategories = savedCategories().toMutableList()
-        val legacyNames = setOf("Académie des Lapibreizh","Fiches couleurs","Fiches sportives","Bricolage","Restaurant des Lapibreizh","Voyages de Carnot","Épisodes","Personnages","Lapins réels","Non classées")
-        if (!prefs.getBoolean("images_categories_v2_migrated", false) && customCategories.any { it in legacyNames }) {
-            customCategories = (1..8).map { "Catégorie $it" }.toMutableList()
-            prefs.edit().putString("category_names", customCategories.joinToString("\u001f")).putBoolean("images_categories_v2_migrated", true).apply()
+    private fun exactImagePage(catalog: Boolean, content: View): ImagesReferenceLayout {
+        val page=ImagesReferenceLayout(this)
+        val cat=if(catalog) savedCategories().firstOrNull() ?: "Catégorie 1" else categoryFilter ?: "Images"
+        fun place(v:View,x:Int,y:Int,w:Int,h:Int,bottom:Boolean=false)=page.put(v,x,y,w,h,bottom)
+        fun text(t:String,x:Int,y:Int,w:Int,h:Int,size:Float=26f,color:Int=cream)=place(page.label(t,size,color).apply{maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END},x,y,w,h)
+        place(page.crop(0,0,864,334,"Les Lapibreizh · Médiathèque Images"),0,0,864,334)
+        place(View(this).apply { contentDescription="Retour"; setOnClickListener { if(catalog) showHome() else showImagesCategories() } },15,10,125,52)
+        place(currentCategoryPhoto(cat).apply { background=page.border() },26,345,132,97)
+        text(cat,175,343,425,42,32f)
+        val count=page.label("${allKnownMediaKeysForCategory(cat)} image",24f)
+        place(count,175,384,425,31)
+        text("Apprendre  •  Comprendre  •  Protéger  •  Partager",175,416,425,30,22f,gold)
+        place(page.crop(616,348,229,70,"Changer de catégorie") {
+            if(catalog) AlertDialog.Builder(this).setTitle("Changer de catégorie").setItems(savedCategories().toTypedArray()){_,i->openGalleryCategory(savedCategories()[i])}.show()
+            else showImagesCategories()
+        },616,348,229,70)
+        val search=page.button("    Rechercher une image…",24f) {
+            val input=EditText(this).apply { setSingleLine(true);setText(if(catalog)catalogQuery else textSearch) }
+            AlertDialog.Builder(this).setTitle("Rechercher une image").setView(input).setPositiveButton("Rechercher"){_,_->
+                if(catalog){catalogQuery=input.text.toString();showImagesCategories()} else {textSearch=input.text.toString();updateItems()}
+            }.setNeutralButton("Effacer"){_,_->if(catalog){catalogQuery="";showImagesCategories()}else{textSearch="";updateItems()}}.setNegativeButton("Annuler",null).show()
         }
-        val sortMode=prefs.getInt("category_sort_mode",0)
-        val categories = when(sortMode){
-            1 -> customCategories.sortedBy{it.lowercase()}.toMutableList()
-            2 -> customCategories.sortedByDescending{it.lowercase()}.toMutableList()
-            else -> customCategories.toMutableList()
-        }
-        content.addView(action("Trier par :  " + when(sortMode){1->"Nom A–Z";2->"Nom Z–A";else->"Personnalisé"} + "  ▾") {
-            AlertDialog.Builder(this).setTitle("Trier les catégories").setItems(arrayOf("Personnalisé","Nom A–Z","Nom Z–A")){_,which->
-                prefs.edit().putInt("category_sort_mode",which).apply(); showImagesCategories()
-            }.show()
-        },LinearLayout.LayoutParams(-1,dp(46)).apply{bottomMargin=dp(5)})
-        val counts=customCategories.associateWith { allKnownMediaKeysForCategory(it) }.toMutableMap()
-        val grid=GridLayout(this).apply { columnCount=3; alignmentMode=GridLayout.ALIGN_BOUNDS; useDefaultMargins=false }
-
-        fun persistOrder() { prefs.edit().putString("category_names",categories.joinToString("\u001f")).putInt("category_sort_mode",0).apply() }
-        fun refresh() { showImagesCategories() }
-        fun tile(category:String): LinearLayout {
-            val card=LinearLayout(this).apply {
-                orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; tag=category
-                setPadding(dp(3),dp(3),dp(3),dp(4))
-                background=GradientDrawable().apply { setColor(Color.rgb(18,18,17)); setStroke(dp(1),gold) }
-                val top=FrameLayout(this@MainActivity)
-                val photo=currentCategoryPhoto(category).apply { scaleType=ImageView.ScaleType.CENTER_CROP }
-                top.addView(photo,FrameLayout.LayoutParams(-1,-1))
-                val check=CheckBox(this@MainActivity).apply {
-                    isChecked=selectedCategories.contains(category); buttonTintList=android.content.res.ColorStateList.valueOf(gold)
-                    setOnCheckedChangeListener { _,v -> if(v) selectedCategories.add(category) else selectedCategories.remove(category); refreshCategoryActions() }
-                }
-                top.addView(check,FrameLayout.LayoutParams(dp(38),dp(38),Gravity.START or Gravity.TOP))
-                addView(top,LinearLayout.LayoutParams(-1,dp(105)))
-                addView(simpleLabel(category,13f,cream).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(-1,dp(29)))
-                addView(simpleLabel("${counts[category] ?: 0} images",10f,cream).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(-1,dp(20)))
-                setOnClickListener { openGalleryCategory(category,Route.IMAGES) }
-                setOnLongClickListener {
-                    if (sortMode != 0) return@setOnLongClickListener false
-                    val clip=ClipData.newPlainText("category",category)
-                    startDragAndDrop(clip,View.DragShadowBuilder(this),category,0); alpha=.55f; true
-                }
-                setOnDragListener { v,e ->
-                    when(e.action) {
-                        android.view.DragEvent.ACTION_DRAG_ENTERED -> { v.alpha=.72f; true }
-                        android.view.DragEvent.ACTION_DRAG_EXITED -> { v.alpha=1f; true }
-                        android.view.DragEvent.ACTION_DROP -> {
-                            val from=e.localState as? String ?: return@setOnDragListener false
-                            val to=v.tag as? String ?: return@setOnDragListener false
-                            val a=categories.indexOf(from); val b=categories.indexOf(to)
-                            if(a>=0 && b>=0 && a!=b){ categories.removeAt(a); categories.add(b,from); persistOrder(); refresh() }
-                            true
-                        }
-                        android.view.DragEvent.ACTION_DRAG_ENDED -> { v.alpha=1f; true }
-                        else -> true
-                    }
+        place(search,24,455,396,70)
+        place(page.crop(37,468,44,44,"Rechercher"),37,468,44,44)
+        place(page.crop(434,455,160,70,"Filtres") { if(catalog){
+            AlertDialog.Builder(this).setTitle("Afficher les catégories").setItems(arrayOf("Toutes","Avec images","Vides")){_,i->prefs.edit().putInt("catalog_filter",i).apply();showImagesCategories()}.show()
+        }else chooseAlbum() },434,455,160,70)
+        text("Taille des miniatures",643,431,203,29,22f)
+        val sizeButtons=mutableListOf<TextView>()
+        listOf("Petites","Moyennes","Grandes").forEachIndexed { index,name ->
+            val columns=4-index
+            val btn=page.button("\n$name",20f,glow=(if(catalog)catalogColumns else thumbnailColumns)==columns) {
+                if(catalog){catalogColumns=columns;showImagesCategories()}else{
+                    thumbnailColumns=columns;grid?.numColumns=columns;galleryAdapter?.notifyDataSetChanged()
+                    sizeButtons.forEachIndexed { i,v->v.background=page.border(i==index) }
                 }
             }
-            return card
+            sizeButtons.add(btn);place(btn,610+index*81,461,74,69)
+            place(page.crop(629,470,33,31,"Miniatures"),630+index*81,470,33,31)
         }
-        categories.forEach { c -> grid.addView(tile(c),GridLayout.LayoutParams().apply { width=0;height=dp(160);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);setMargins(dp(3),dp(3),dp(3),dp(3)) }) }
-        val unsorted=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER
-            background=GradientDrawable().apply{setColor(Color.rgb(18,18,17));setStroke(dp(1),gold)}
-            addView(simpleLabel("?",52f,gold).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(105)))
-            addView(simpleLabel("À classer",13f,cream).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(29)))
-            setOnClickListener { navigate(Route.UNSORTED) }
+        text("Trier par :",26,537,107,47,24f)
+        if(catalog){
+            listOf("Date ↓","Nom","Type","Taille").forEachIndexed { i,label ->
+                place(page.button(label,23f,glow=catalogSort==i){catalogSort=i;showImagesCategories()},116+i*124,538,113,44)
+            }
+            text("${galleryItems.size} image",735,539,106,44,23f)
+        }else{
+            val sort=page.button(arrayOf("Personnalisé","Date","Nom","Type","Taille")[mediaSort]+"  ⌄",25f) {}
+            sort.setOnClickListener {
+                AlertDialog.Builder(this).setTitle("Trier par").setSingleChoiceItems(arrayOf("Personnalisé","Date","Nom","Type","Taille"),mediaSort){d,i->
+                    mediaSort=i; prefs.edit().putInt("images_sort",i).apply();sort.text=arrayOf("Personnalisé","Date","Nom","Type","Taille")[i]+"  ⌄";updateItems();d.dismiss()
+                }.show()
+            }
+            place(sort,134,538,253,50)
         }
-        grid.addView(unsorted,GridLayout.LayoutParams().apply{width=0;height=dp(160);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);setMargins(dp(3),dp(3),dp(3),dp(3))})
-        val plus=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER
-            background=GradientDrawable().apply{setColor(Color.rgb(48,31,12));setStroke(dp(2),gold)}
-            addView(simpleLabel("+",52f,gold).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(100)))
-            addView(simpleLabel("Nouvelle\ncatégorie",13f,gold).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(50)))
-            setOnClickListener { addCategoryDialog() }
+        content.background=page.border()
+        page.put(content,24,594,820,330,stretch=true)
+        val actions=View(this).apply { background=page.border() };place(actions,13,-328,838,181,true)
+        val selection=page.button("ⓧ  0 image\nsélectionnée",20f) { if(catalog){catalogSelected.clear();showImagesCategories()}else{selected.clear();updateSelection()} }
+        place(selection,22,-318,165,71,true)
+        val shares=listOf("com.openai.chatgpt","com.instagram.android","com.facebook.katana","")
+        val bounds=listOf(intArrayOf(197,1134,150,69),intArrayOf(356,1134,150,69),intArrayOf(515,1134,151,69),intArrayOf(676,1134,167,69))
+        bounds.forEachIndexed { i,a->place(page.crop(a[0],a[1],a[2],a[3],listOf("Partager ChatGPT","Partager Instagram","Partager Facebook","Plus de partages")[i]) {
+            if(catalog) shareSelectedCategories(catalogSelected.toList(),shares[i].ifEmpty{null}) else shareExactImages(shares[i].ifEmpty{null})
+        },a[0],-318,a[2],a[3],true) }
+        fun selectCatalogMedia():Boolean {
+            if(!catalog) return true
+            selected.clear();galleryItems.filter{getCategory(it) in catalogSelected}.take(1000).forEach{selected.add(it.key)}
+            if(selected.isEmpty()){Toast.makeText(this,"Sélectionne une catégorie contenant des images",Toast.LENGTH_SHORT).show();return false};return true
         }
-        grid.addView(plus,GridLayout.LayoutParams().apply{width=0;height=dp(160);columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);setMargins(dp(3),dp(3),dp(3),dp(3))})
-        content.addView(grid,LinearLayout.LayoutParams(-1,-2))
+        val move=page.button("Déplacer\n(0 / 1000)",21f){if(selectCatalogMedia())showMoveSelected()}
+        move.setPadding(dp(20),0,dp(2),0)
+        place(move,24,-237,166,78,true)
+        place(page.crop(35,1230,48,43,"Dossier"),33,-218,48,43,true)
+        place(page.button("Envoyer à la galerie\n(0 / 1000)",20f){if(selectCatalogMedia()) {
+            // Classification is logical: originals already remain in MediaStore.
+            Toast.makeText(this,"Les originaux sont déjà présents dans la galerie du téléphone.",Toast.LENGTH_LONG).show()
+        }},201,-237,214,78,true)
+        val delete=page.button("Supprimer\n(0 / 100 max)",21f,red=true){if(selectCatalogMedia())showDeleteSelected()}
+        delete.setPadding(dp(17),0,0,0)
+        place(delete,425,-237,189,78,true)
+        place(page.crop(449,1232,34,42,"Corbeille"),445,-218,34,42,true)
+        place(page.button("☑  Tout sélectionner",23f){
+            if(catalog){catalogSelected.clear();catalogSelected.addAll(savedCategories());showImagesCategories()}
+            else {selected.clear();shownItems.take(1000).forEach{selected.add(it.key)};updateSelection()}
+        },625,-237,216,78,true)
+        place(page.crop(0,1310,864,146,"Navigation"),0,-146,864,146,true)
+        val destinations=listOf<()->Unit>({showHome()},{showImagesCategories()},{showVideosCategories()},{navigate(Route.FAVORITES)},{showSettings()})
+        destinations.forEachIndexed { i,action->place(View(this).apply {contentDescription=listOf("Accueil","Images","Vidéos","Favoris","Paramètres")[i];isFocusable=true;setOnClickListener{action()}},i*173,-137,173,137,true) }
+        exactRefresh={
+            val n=if(catalog)galleryItems.count{getCategory(it) in catalogSelected} else selected.size
+            selection.text="ⓧ  $n image${if(n>1)"s" else ""}\nsélectionnée${if(n>1)"s" else ""}"
+            move.text="Déplacer\n($n / 1000)";delete.text="Supprimer\n($n / 100 max)"
+            count.text="${allKnownMediaKeysForCategory(cat)} image"
+        }
+        exactRefresh?.invoke()
+        return page
+    }
 
-        val actions=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(0,dp(7),0,dp(4)) }
-        val shareRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        fun shareButton(label:String,pkg:String?=null)=action(label) { shareSelectedCategories(selectedCategories.toList(),pkg) }
-        shareRow.addView(shareButton("Partager\nChatGPT","com.openai.chatgpt"),LinearLayout.LayoutParams(0,dp(62),1f).apply{rightMargin=dp(3)})
-        shareRow.addView(shareButton("Partager\nInstagram","com.instagram.android"),LinearLayout.LayoutParams(0,dp(62),1f).apply{rightMargin=dp(3)})
-        shareRow.addView(shareButton("Partager\nFacebook","com.facebook.katana"),LinearLayout.LayoutParams(0,dp(62),1f).apply{rightMargin=dp(3)})
-        shareRow.addView(shareButton("Plus de\npartages"),LinearLayout.LayoutParams(0,dp(62),1f))
-        actions.addView(shareRow)
-        val manage=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        manage.addView(dangerAction("Supprimer\n(0 / 3 max)") { deleteSelectedCategories(selectedCategories.toList()) }.also{it.tag="deleteCategories"},LinearLayout.LayoutParams(0,dp(62),1f).apply{rightMargin=dp(3)})
-        manage.addView(action("☑  Tout sélectionner") {
-            selectedCategories.clear(); selectedCategories.addAll(categories.take(3)); Toast.makeText(this,"${selectedCategories.size} catégorie(s) sélectionnée(s)",Toast.LENGTH_SHORT).show()
-        },LinearLayout.LayoutParams(0,dp(62),1f))
-        actions.addView(manage,LinearLayout.LayoutParams(-1,dp(62)).apply{topMargin=dp(4)})
-        content.addView(actions)
-
-        fun loadCounts() {
-            if(!hasPermission(Route.IMAGES)) return
-            val request=generation
-            io.execute { val grouped=queryMedia(Route.IMAGES).groupingBy{getCategory(it)}.eachCount(); runOnUiThread { if(request==generation){ counts.putAll(grouped); refresh() } } }
+    private fun shareExactImages(packageName:String?) {
+        if(packageName==null){shareSelected();return}
+        val medias=galleryItems.filter{it.key in selected};if(medias.isEmpty())return
+        val uris=ArrayList(medias.map{it.uri})
+        val intent=Intent(if(uris.size==1)Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+            type="image/*";`package`=packageName;addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if(uris.size==1)putExtra(Intent.EXTRA_STREAM,uris.first())else putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris)
+            clipData=ClipData.newUri(contentResolver,"Images",uris.first()).also{c->uris.drop(1).forEach{c.addItem(ClipData.Item(it))}}
         }
-        val scroll=ScrollView(this).apply { setBackgroundColor(black); addView(content) }
-        page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        page.addView(navBar(Route.IMAGES),LinearLayout.LayoutParams(-1,dp(75)))
+        try{startActivity(intent)}catch(_:Exception){shareSelected()}
+    }
+
+    private fun showCategoryCatalog(video: Boolean) {
+        exactRefresh=null
+        if(video){showCategoryManager(true,CategoryEntry.VIDEOS);return}
+        val request=++generation;screenMode="images-catalog";route=Route.IMAGES;videoCategoryTab=false
+        selected.clear();categoryFilter=null;selectionActions=null;galleryEmptyState=null;grid=null;galleryAdapter=null;selectionInfo=null
+        if(savedCategories().isEmpty())prefs.edit().putString("category_names",(1..8).joinToString("\u001f"){"Catégorie $it"}).apply()
+        val g=GridView(this).apply {numColumns=catalogColumns;horizontalSpacing=dp(4);verticalSpacing=dp(4);setPadding(dp(2),dp(2),dp(6),dp(4));isVerticalScrollBarEnabled=true}
+        val page=exactImagePage(true,g)
+        var names=listOf<String>()
+        fun rebuild(){
+            val filter=prefs.getInt("catalog_filter",0)
+            val cats=savedCategories().filter{it.contains(catalogQuery,true)}.filter{filter==0 || (allKnownMediaKeysForCategory(it)>0)==(filter==1)}
+            names=listOf("")+when(catalogSort){1->cats.sorted();2->cats.sortedBy{categoryScope(it)};3->cats.sortedByDescending{c->galleryItems.filter{getCategory(it)==c}.sumOf{it.size}};else->cats.sortedByDescending{c->galleryItems.filter{getCategory(it)==c}.maxOfOrNull{it.date} ?: 0L}}
+        }
+        rebuild()
+        val adapter=object:BaseAdapter(){
+            override fun getCount()=names.size
+            override fun getItem(p:Int)=names[p]
+            override fun getItemId(p:Int)=p.toLong()
+            override fun getView(p:Int,recycled:View?,parent:ViewGroup):View {
+                val cat=names[p];val plus=cat.isEmpty();val scale=resources.displayMetrics.widthPixels/864f
+                return LinearLayout(this@MainActivity).apply {
+                    orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;background=page.border(cat in catalogSelected)
+                    layoutParams=AbsListView.LayoutParams(-1,((if(catalogColumns==3)168 else 504/catalogColumns)*scale).toInt())
+                    if(!plus && prefs.getString("category_image_$cat",null)?.let{File(it).exists()}==true) addView(currentCategoryPhoto(cat),LinearLayout.LayoutParams(-1,0,1f))
+                    else addView(TextView(this@MainActivity).apply{text=if(plus)"+" else "?";setTextColor(if(plus)gold else cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,70*scale);gravity=Gravity.CENTER;includeFontPadding=false},LinearLayout.LayoutParams(-1,0,1f))
+                    addView(TextView(this@MainActivity).apply{text=if(plus)"Nouvelle\ncatégorie" else  cat;typeface=android.graphics.Typeface.SERIF;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,25*scale);gravity=Gravity.CENTER;includeFontPadding=false},LinearLayout.LayoutParams(-1,-2))
+                    if(!plus)addView(TextView(this@MainActivity).apply{text="${allKnownMediaKeysForCategory(cat)} image";typeface=android.graphics.Typeface.SERIF;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,21*scale);gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2))
+                    setOnClickListener {if(plus)addCategoryDialog()else if(catalogSelected.isNotEmpty()){if(!catalogSelected.add(cat))catalogSelected.remove(cat);notifyDataSetChanged();exactRefresh?.invoke()}else openGalleryCategory(cat)}
+                    setOnLongClickListener{if(!plus){if(!catalogSelected.add(cat))catalogSelected.remove(cat);notifyDataSetChanged();exactRefresh?.invoke()};true}
+                }
+            }
+        }
+        g.adapter=adapter
+        if(Build.VERSION.SDK_INT>=29)g.verticalScrollbarThumbDrawable=GradientDrawable().apply{setColor(gold);cornerRadius=dp(4).toFloat()}
         setContentView(page)
-        // Counts are intentionally loaded on next entry to avoid rebuilding while dragging.
+        io.execute{val medias=queryMedia(Route.IMAGES);runOnUiThread{if(generation==request){galleryItems=medias;rebuild();adapter.notifyDataSetChanged();exactRefresh?.invoke()}}}
     }
 
     private fun refreshCategoryActions() { /* state lives in the visible controls; no extra menu */ }
@@ -722,11 +746,13 @@ class MainActivity : AppCompatActivity() {
         categoryFilter = pendingCategory
         pendingCategory = null
         visibleLimit = 120
+        if(next==Route.IMAGES)mediaSort=prefs.getInt("images_sort",0).coerceIn(0,4)
         if (next == Route.UNSORTED) unsortedFilter = UnsortedFilter.ALL
         loadGallery()
     }
 
     private fun loadGallery() {
+        exactRefresh = null
         screenMode = "gallery"
         val requestNumber = ++generation
         val layout = root()
@@ -747,9 +773,10 @@ class MainActivity : AppCompatActivity() {
             identity.addView(currentCategoryPhoto(cat), LinearLayout.LayoutParams(dp(76),dp(76)).apply { rightMargin=dp(10) })
             val labels=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
             labels.addView(simpleLabel(cat,22f,cream))
-            labels.addView(simpleLabel("${allKnownMediaKeysForCategory(cat)} image(s)",12f,gold))
+            labels.addView(simpleLabel("${allKnownMediaKeysForCategory(cat)} image(s)",12f,cream))
+            labels.addView(simpleLabel("Apprendre  •  Comprendre  •  Protéger  •  Partager",11f,gold))
             identity.addView(labels,LinearLayout.LayoutParams(0,-2,1f))
-            identity.addView(action("Changer de catégorie") { showImagesCategories() },LinearLayout.LayoutParams(dp(145),dp(54)))
+            identity.addView(action("▰  Changer\nde catégorie") { showImagesCategories() },LinearLayout.LayoutParams(dp(155),dp(64)))
             layout.addView(identity)
         } else layout.addView(heading(title, 18f))
         if (route == Route.UNSORTED) {
@@ -764,7 +791,7 @@ class MainActivity : AppCompatActivity() {
         }
         val info = note("Chargement des médias…")
         selectionInfo = info
-        layout.addView(info)
+        info.visibility = View.GONE
         val search = EditText(this).apply {
             hint = "⌕  Rechercher une image ou vidéo…"
             setSingleLine(true)
@@ -786,11 +813,14 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
-        layout.addView(search, LinearLayout.LayoutParams(-1, dp(52)).apply {
-            bottomMargin = dp(7)
-        })
         val isImageCategory = route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()
         if (isImageCategory) {
+            search.hint = "⌕  Rechercher une image…"
+            val searchRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+            searchRow.addView(search, LinearLayout.LayoutParams(0,dp(56),1f).apply { rightMargin=dp(5) })
+            searchRow.addView(action("☷  Filtres") { openFilters() },LinearLayout.LayoutParams(dp(105),dp(56)))
+            layout.addView(searchRow,LinearLayout.LayoutParams(-1,dp(56)).apply { bottomMargin=dp(4) })
+            layout.addView(simpleLabel("Taille des miniatures",12f,cream).apply { gravity=Gravity.END })
             val displayOptions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             displayOptions.addView(action("▦\nPetites") { thumbnailColumns=4; grid?.numColumns=4; galleryAdapter?.notifyDataSetChanged() }, LinearLayout.LayoutParams(0, dp(54), 1f))
             displayOptions.addView(action("▦\nMoyennes") { thumbnailColumns=3; grid?.numColumns=3; galleryAdapter?.notifyDataSetChanged() }, LinearLayout.LayoutParams(0, dp(54), 1f))
@@ -802,6 +832,7 @@ class MainActivity : AppCompatActivity() {
                 }.setNegativeButton("Annuler",null).show()
             }, LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(4); bottomMargin=dp(4) })
         } else {
+            layout.addView(search, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin=dp(7) })
             val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             filters.addView(action("Albums") { chooseAlbum() }, LinearLayout.LayoutParams(0, dp(50), 1f))
             filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
@@ -817,14 +848,23 @@ class MainActivity : AppCompatActivity() {
             layout.addView(filters)
         }
         selectionActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            visibility = if (route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()) View.VISIBLE else View.GONE
+            orientation = LinearLayout.VERTICAL
+            visibility = if (isImageCategory) View.VISIBLE else View.GONE
         }.also { actions ->
-            actions.addView(action("Classer") { showMoveSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Supprimer") { showDeleteSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Partager") { shareSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Favoris ♡") { toggleFavoritesSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
-            actions.addView(action("Annuler") { selected.clear(); updateSelection() }, LinearLayout.LayoutParams(0, dp(49), 1f))
+            val r1=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+            r1.addView(action("ⓧ  0 image\nsélectionnée") { selected.clear(); updateSelection() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r1.addView(action("Partager\nChatGPT") { shareSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r1.addView(action("Partager\nInstagram") { shareSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r1.addView(action("Partager\nFacebook") { shareSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r1.addView(action("Plus de\npartages") { shareSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            actions.addView(r1)
+            val r2=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+            r2.addView(action("▰  Déplacer\n(0 / 1000)") { showMoveSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r2.addView(dangerAction("Supprimer\n(0 / 100 max)") { showDeleteSelected() },LinearLayout.LayoutParams(0,dp(56),1f))
+            r2.addView(action("☑  Tout sélectionner") {
+                selected.clear(); shownItems.take(1000).forEach { selected.add(it.key) }; updateSelection()
+            },LinearLayout.LayoutParams(0,dp(56),1f))
+            actions.addView(r2)
             layout.addView(actions)
         }
         val g = GridView(this).apply {
@@ -836,16 +876,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(7), 0, dp(7))
         }
         grid = g
-        if (route == Route.IMAGES && categoryFilter != null && shownItems.isEmpty()) {
-            val empty = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(18),dp(34),dp(18),dp(34))
-                addView(simpleLabel("▣",58f,gold).apply { gravity=Gravity.CENTER })
-                addView(simpleLabel("Aucune image dans cette catégorie",20f,cream).apply { gravity=Gravity.CENTER })
-                addView(simpleLabel("Appuyez sur « Nouvelle image » pour ajouter des images depuis votre galerie.",13f,cream).apply { gravity=Gravity.CENTER })
-                addView(action("＋  Nouvelle image") { pickImagesForCategory() }, LinearLayout.LayoutParams(dp(230),dp(58)).apply { topMargin=dp(18) })
-            }
-            layout.addView(empty, LinearLayout.LayoutParams(-1,0,1f))
-        }
         galleryAdapter = object : BaseAdapter() {
             override fun getCount() = minOf(shownItems.size, visibleLimit)
             override fun getItem(position: Int) = shownItems[position]
@@ -936,16 +966,54 @@ class MainActivity : AppCompatActivity() {
                 }; true
             } else true
         }
-        layout.addView(g, LinearLayout.LayoutParams(-1, 0, 1f))
+        val mediaArea = FrameLayout(this).apply {
+            setBackgroundColor(black)
+            background = GradientDrawable().apply { setColor(black); setStroke(dp(1), Color.rgb(83,67,38)) }
+        }
+        mediaArea.addView(g, FrameLayout.LayoutParams(-1, -1))
+        val emptyState = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            visibility = View.GONE
+            addView(simpleLabel("▧",58f,gold).apply { gravity=Gravity.CENTER })
+            addView(simpleLabel("Aucune image dans cette catégorie",20f,cream).apply { gravity=Gravity.CENTER })
+            addView(simpleLabel("Appuyez sur « Nouvelle image » pour ajouter des images depuis votre galerie.",13f,cream).apply { gravity=Gravity.CENTER })
+            addView(action("＋  Nouvelle image") { pickImagesForCategory() }, LinearLayout.LayoutParams(dp(230),dp(58)).apply { topMargin=dp(14) })
+        }
+        galleryEmptyState = emptyState
+        mediaArea.addView(emptyState, FrameLayout.LayoutParams(-1, -1))
+        layout.addView(mediaArea, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin=dp(4); bottomMargin=dp(4) })
         val more = action("Afficher 120 éléments supplémentaires") {
             visibleLimit += 120
             galleryAdapter?.notifyDataSetChanged()
             refreshInfo()
         }
         more.tag = "more"
+        more.visibility = View.GONE
         layout.addView(more, LinearLayout.LayoutParams(-1, dp(45)))
         layout.addView(navBar(route))
-        setContentView(layout)
+        if (isImageCategory) {
+            visibleLimit = Int.MAX_VALUE
+            val page = exactImagePage(false, mediaArea)
+            emptyState.removeAllViews()
+            emptyState.setPadding(dp(8),dp(8),dp(8),dp(8))
+            emptyState.addView(page.imageGlyph(),LinearLayout.LayoutParams(dp(58),dp(58)).apply{bottomMargin=dp(18)})
+            emptyState.addView(page.label("Aucune image dans cette catégorie",30f,cream,true))
+            emptyState.addView(page.label("Appuyez sur « Nouvelle image »\npour ajouter des images depuis votre galerie.",25f,cream,true))
+            emptyState.addView(page.button("＋  Nouvelle image",31f,glow=true){pickImagesForCategory()},LinearLayout.LayoutParams(dp(190),dp(46)).apply{topMargin=dp(16)})
+            selectionActions = null
+            if(Build.VERSION.SDK_INT>=29)g.verticalScrollbarThumbDrawable=GradientDrawable().apply{setColor(gold);cornerRadius=dp(4).toFloat()}
+            g.setOnItemLongClickListener { _,child,position,_->
+                val key=shownItems[position].key
+                if(!selected.add(key))selected.remove(key)
+                if(selected.size>1000)selected.remove(key)
+                updateSelection()
+                if(mediaSort==0)child.startDragAndDrop(ClipData.newPlainText("media",key),View.DragShadowBuilder(child),key,0)
+                true
+            }
+            setContentView(page)
+        } else setContentView(layout)
         val queriedRoute = route
         io.execute {
             val items = queryMedia(queriedRoute)
@@ -1052,7 +1120,12 @@ class MainActivity : AppCompatActivity() {
             else -> filtered
         }
         galleryAdapter?.notifyDataSetChanged(); refreshInfo()
-        (grid?.parent as? LinearLayout)?.findViewWithTag<Button>("more")?.visibility = if (shownItems.size > visibleLimit) View.VISIBLE else View.GONE
+        val imageCategory = route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()
+        val empty = imageCategory && shownItems.isEmpty()
+        galleryEmptyState?.visibility = if (empty) View.VISIBLE else View.GONE
+        grid?.visibility = if (empty) View.GONE else View.VISIBLE
+        val galleryLayout = grid?.parent?.parent as? LinearLayout
+        galleryLayout?.findViewWithTag<Button>("more")?.visibility = if (!empty && shownItems.size > visibleLimit) View.VISIBLE else View.GONE
     }
 
     private fun customMediaOrder(category:String, current:List<String>):List<String> {
@@ -1068,9 +1141,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshInfo() {
+        exactRefresh?.invoke()
         val count = minOf(shownItems.size, visibleLimit)
-        selectionInfo?.text = if (selected.isEmpty()) "$count / ${shownItems.size} médias · appui long pour sélectionner"
-            else "${selected.size} sélectionné(s) · $count / ${shownItems.size} médias"
+        selectionInfo?.text = if (selected.isEmpty()) {
+            if (route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank() && mediaSort == 0)
+                "$count / ${shownItems.size} images · appui long pour déplacer"
+            else "$count / ${shownItems.size} médias · appui long pour sélectionner"
+        } else "${selected.size} sélectionné(s) · $count / ${shownItems.size} médias"
     }
 
     private fun updateSelection() {
