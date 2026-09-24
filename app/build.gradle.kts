@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 32
-        versionName = "0.6.23"
+        versionName = "0.6.24"
     }
     signingConfigs {
         if (hasPrivateSigning) {

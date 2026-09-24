@@ -2303,6 +2303,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun pickImagesForCategory() {
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivityForResult(intent, 306)
+    }
+
     @Deprecated("Legacy result callback used for Android media trash confirmation")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
