@@ -250,16 +250,9 @@ class MainActivity : AppCompatActivity() {
             Triple("⚙\nParamètres", Route.SETTINGS, { showSettings() })
         ) else listOf(
             Triple("⌂\nAccueil", Route.HOME, { showHome() }),
-            Triple("▧\nGalerie", Route.IMAGES, { showMediaDashboard(Route.IMAGES) }),
-            Triple("▱\nCatégories", Route.CATEGORIES, {
-                val video = active == Route.VIDEOS || (active == Route.CATEGORIES && videoCategoryTab)
-                val origin=if (active==Route.CATEGORIES) categoryEntry
-                    else if (video) CategoryEntry.VIDEOS else CategoryEntry.IMAGES
-                showCategoryManager(video, origin)
-            }),
-            Triple("⌕\nRecherche", Route.SEARCH, {
-                openSearch(if (active == Route.VIDEOS) Route.VIDEOS else Route.IMAGES)
-            }),
+            Triple("▧\nImages", Route.IMAGES, { showImagesCategories() }),
+            Triple("▶\nVidéos", Route.VIDEOS, { showVideosCategories() }),
+            Triple("♥\nFavoris", Route.FAVORITES, { navigate(Route.FAVORITES) }),
             Triple("⚙\nParamètres", Route.SETTINGS, { showSettings() })
         )
         tabs.forEach { (label, tab, destination) ->
@@ -431,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         route = Route.HOME
         selected.clear()
         artworkScreen(R.drawable.ui_home_exact, 906, 1736, listOf(
-            hs(15,743,423,405,"Images") { showMediaDashboard(Route.IMAGES) },
+            hs(15,743,423,405,"Images") { showImagesCategories() },
             hs(454,743,427,405,"Montages vidéo") { showVideosCategories() },
             hs(16,1164,207,186,"Rechercher") { openSearch(Route.IMAGES) },
             hs(237,1164,207,186,"Non classées") { navigate(Route.UNSORTED) },
@@ -491,11 +484,11 @@ class MainActivity : AppCompatActivity() {
         val page = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(black) }
         val content = root().apply { setPadding(dp(6),0,dp(6),dp(6)) }
         content.addView(ImageView(this).apply {
-            setImageResource(R.drawable.art_images_categories_header)
-            scaleType=ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.art_images_categories_banner)
+            scaleType=ImageView.ScaleType.FIT_XY
             adjustViewBounds=true
             contentDescription="Les Lapibreizh · Médiathèque Images"
-        }, LinearLayout.LayoutParams(-1,dp(330)))
+        }, LinearLayout.LayoutParams(-1,dp(305)))
 
         val tools=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         tools.addView(action("⌕  Rechercher une image…") { openSearch(Route.IMAGES) },LinearLayout.LayoutParams(0,dp(52),1f).apply{rightMargin=dp(4)})
@@ -710,12 +703,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun galleryHeader(isVideo: Boolean, onBack: () -> Unit): FrameLayout = FrameLayout(this).apply {
         val image = ImageView(this@MainActivity).apply {
-            setImageResource(if (isVideo) R.drawable.art_gallery_videos else R.drawable.art_images_categories_header)
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageResource(if (isVideo) R.drawable.art_gallery_videos else R.drawable.art_images_categories_banner)
+            scaleType = ImageView.ScaleType.FIT_XY
             contentDescription = if (isVideo) "En-tête Vidéos" else "Les Lapibreizh · Médiathèque Images"
         }
         val width = resources.displayMetrics.widthPixels - dp(24)
-        val imageHeight = if (isVideo) (width * 275f / 864f).toInt().coerceAtLeast(dp(70)) else dp(250)
+        val imageHeight = if (isVideo) (width * 275f / 864f).toInt().coerceAtLeast(dp(70)) else (width * 338f / 864f).toInt()
         addView(image, FrameLayout.LayoutParams(-1, imageHeight))
         addView(View(this@MainActivity).apply {
             isClickable = true; contentDescription = "Retour"; setOnClickListener { onBack() }
@@ -746,7 +739,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(galleryHeader(route == Route.VIDEOS) {
             if (route == Route.IMAGES) showImagesCategories()
             else if (route == Route.VIDEOS) showVideosCategories()
-            else showMediaDashboard(Route.IMAGES)
+            else showImagesCategories()
         })
         if (route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()) {
             val cat = categoryFilter!!
@@ -796,36 +789,28 @@ class MainActivity : AppCompatActivity() {
         layout.addView(search, LinearLayout.LayoutParams(-1, dp(52)).apply {
             bottomMargin = dp(7)
         })
-        val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        filters.addView(action("Albums") { chooseAlbum() }, LinearLayout.LayoutParams(0, dp(50), 1f))
-        filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
-        filters.addView(action("Trier par ▾") {
-            AlertDialog.Builder(this).setTitle("Trier par")
-                .setSingleChoiceItems(arrayOf("Personnalisé", "Date", "Nom", "Type", "Taille"),mediaSort) { dialog, index ->
-                    mediaSort = index; updateItems(); dialog.dismiss()
+        val isImageCategory = route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()
+        if (isImageCategory) {
+            val displayOptions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            displayOptions.addView(action("▦\nPetites") { thumbnailColumns=4; grid?.numColumns=4; galleryAdapter?.notifyDataSetChanged() }, LinearLayout.LayoutParams(0, dp(54), 1f))
+            displayOptions.addView(action("▦\nMoyennes") { thumbnailColumns=3; grid?.numColumns=3; galleryAdapter?.notifyDataSetChanged() }, LinearLayout.LayoutParams(0, dp(54), 1f))
+            displayOptions.addView(action("▦\nGrandes") { thumbnailColumns=2; grid?.numColumns=2; galleryAdapter?.notifyDataSetChanged() }, LinearLayout.LayoutParams(0, dp(54), 1f))
+            layout.addView(displayOptions)
+            layout.addView(action("Trier par :  " + arrayOf("Personnalisé","Date","Nom","Type","Taille")[mediaSort] + "  ▾") {
+                AlertDialog.Builder(this).setTitle("Trier par").setSingleChoiceItems(arrayOf("Personnalisé","Date","Nom","Type","Taille"),mediaSort) { dialog,index ->
+                    mediaSort=index; updateItems(); dialog.dismiss()
                 }.setNegativeButton("Annuler",null).show()
-        }, LinearLayout.LayoutParams(0, dp(50), 1f))
-        layout.addView(filters)
-        val displayOptions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        displayOptions.addView(action("Petites") { thumbnailColumns=4; grid?.numColumns=4; galleryAdapter?.notifyDataSetChanged() },
-            LinearLayout.LayoutParams(0, dp(41), 1f))
-        displayOptions.addView(action("Moyennes") { thumbnailColumns=3; grid?.numColumns=3; galleryAdapter?.notifyDataSetChanged() },
-            LinearLayout.LayoutParams(0, dp(41), 1f))
-        displayOptions.addView(action("Grandes") { thumbnailColumns=2; grid?.numColumns=2; galleryAdapter?.notifyDataSetChanged() },
-            LinearLayout.LayoutParams(0, dp(41), 1f))
-        layout.addView(displayOptions)
-        if (route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()) {
-            layout.addView(primaryAction("＋  Nouvelle image") {
-                val intent=Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
-                    type="image/*"; putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivityForResult(intent,306)
-            },LinearLayout.LayoutParams(-1,dp(52)).apply { topMargin=dp(5); bottomMargin=dp(5) })
+            }, LinearLayout.LayoutParams(-1,dp(48)).apply { topMargin=dp(4); bottomMargin=dp(4) })
+        } else {
+            val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            filters.addView(action("Albums") { chooseAlbum() }, LinearLayout.LayoutParams(0, dp(50), 1f))
+            filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
+            filters.addView(action("Trier par ▾") { chooseSort() }, LinearLayout.LayoutParams(0, dp(50), 1f))
+            layout.addView(filters)
         }
         selectionActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            visibility = View.GONE
+            visibility = if (route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()) View.VISIBLE else View.GONE
         }.also { actions ->
             actions.addView(action("Classer") { showMoveSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
             actions.addView(action("Supprimer") { showDeleteSelected() }, LinearLayout.LayoutParams(0, dp(49), 1f))
@@ -1606,7 +1591,7 @@ class MainActivity : AppCompatActivity() {
         hit(500,1370,365,45,"Réinitialiser l’application") { confirmReset() }
         hit(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version 0.6.20").setPositiveButton("OK",null).show() }
         hit(20,1610,155,100,"Accueil") { showHome() }
-        hit(180,1610,170,100,"Galerie") { showMediaDashboard(Route.IMAGES) }
+        hit(180,1610,170,100,"Galerie") { showImagesCategories() }
         hit(355,1610,175,100,"Catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) }
         hit(535,1610,170,100,"Recherche") { openSearch(Route.IMAGES) }
         hit(710,1610,175,100,"Paramètres") { showSettings() }
@@ -2212,7 +2197,7 @@ class MainActivity : AppCompatActivity() {
                     navigate(if(choice==0) Route.IMAGES else Route.VIDEOS)
                 }.setNegativeButton("Annuler",null).show()
         },LinearLayout.LayoutParams(-1,dp(57)).apply { bottomMargin=dp(7) })
-        layout.addView(action("⌂  Retour à la médiathèque") { showMediaDashboard(Route.IMAGES) },
+        layout.addView(action("⌂  Retour à la médiathèque") { showImagesCategories() },
             LinearLayout.LayoutParams(-1,dp(57)))
         layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(149)))
         setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
@@ -2574,7 +2559,8 @@ class MainActivity : AppCompatActivity() {
         when(screenMode) {
             "home" -> super.onBackPressed()
             "dashboard" -> showHome()
-            "images-catalog", "videos-catalog" -> showMediaDashboard(Route.IMAGES)
+            "images-catalog" -> showImagesCategories()
+            "videos-catalog" -> showVideosCategories()
             "gallery" -> if (route == Route.VIDEOS) showVideosCategories() else showImagesCategories()
             "categories" -> exitCategoryManager()
             "editor" -> showCategoryManager(videoCategoryTab, categoryEntry)
