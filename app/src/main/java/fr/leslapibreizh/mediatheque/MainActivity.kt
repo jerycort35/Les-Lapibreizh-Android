@@ -478,75 +478,84 @@ class MainActivity : AppCompatActivity() {
     private var catalogColumns = 3
     private val catalogSelected = linkedSetOf<String>()
 
-    private fun exactImagePage(catalog: Boolean, content: View): ImagesReferenceLayout {
+    private fun exactImagePage(catalog: Boolean, content: View, video: Boolean = false): ImagesReferenceLayout {
         val page=ImagesReferenceLayout(this)
+        val videoArt=if(video)ImagesReferenceLayout(this,if(catalog)R.drawable.videos_catalog_master else R.drawable.videos_category_master)else null
+        val mediaWord=if(video)"vidéo" else "image"
+        val kind=if(video)Route.VIDEOS else Route.IMAGES
+        fun catalogBack(){showCategoryCatalog(video)}
         val cat=if(catalog) savedCategories().firstOrNull() ?: "Catégorie 1" else categoryFilter ?: "Images"
-        fun place(v:View,x:Int,y:Int,w:Int,h:Int,bottom:Boolean=false)=page.put(v,x,y,w,h,bottom)
+        fun place(v:View,x:Int,y:Int,w:Int,h:Int,bottom:Boolean=false)=page.put(v,x,if(video && !bottom && y>=334)y+42 else y,w,h,bottom)
         fun text(t:String,x:Int,y:Int,w:Int,h:Int,size:Float=26f,color:Int=cream)=place(page.label(t,size,color).apply{maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END},x,y,w,h)
-        place(page.crop(0,0,864,334,"Les Lapibreizh · Médiathèque Images"),0,0,864,334)
-        place(View(this).apply { contentDescription="Retour"; setOnClickListener { if(catalog) showHome() else showImagesCategories() } },15,10,125,52)
-        place(currentCategoryPhoto(cat).apply { background=page.border() },26,345,132,97)
+        if(video)place(videoArt!!.crop(0,0,864,375,"Les Lapibreizh · Médiathèque Vidéos"),0,0,864,375)else place(page.crop(0,0,864,334,"Les Lapibreizh · Médiathèque Images"),0,0,864,334)
+        place(View(this).apply { contentDescription="Retour"; setOnClickListener { if(catalog) showHome() else catalogBack() } },15,10,125,52)
+        if(video && prefs.getString("category_image_$cat",null)==null){
+            place(View(this).apply{background=page.border()},26,345,132,97)
+            place(videoArt!!.crop(58,406,68,62,"Catégorie Vidéos"),55,360,74,66)
+        }else place(currentCategoryPhoto(cat).apply{background=page.border()},26,345,132,97)
         text(cat,175,343,425,42,32f)
-        val count=page.label("${allKnownMediaKeysForCategory(cat)} image",24f)
+        val count=page.label("${if(video)galleryItems.count{it.mime.startsWith("video/") && getCategory(it)==cat}else allKnownMediaKeysForCategory(cat)} $mediaWord",24f)
         place(count,175,384,425,31)
-        text("Apprendre  •  Comprendre  •  Protéger  •  Partager",175,416,425,30,22f,gold)
+        text("Apprendre  •  Comprendre  •  Protéger  •  Partager",175,416,425,30,15f,gold)
         place(page.crop(616,348,229,70,"Changer de catégorie") {
-            if(catalog) AlertDialog.Builder(this).setTitle("Changer de catégorie").setItems(savedCategories().toTypedArray()){_,i->openGalleryCategory(savedCategories()[i])}.show()
-            else showImagesCategories()
+            if(catalog) AlertDialog.Builder(this).setTitle("Changer de catégorie").setItems(savedCategories().toTypedArray()){_,i->openGalleryCategory(savedCategories()[i],kind)}.show()
+            else catalogBack()
         },616,348,229,70)
-        val search=page.button("    Rechercher une image…",24f) {
+        val search=page.button("    Rechercher une $mediaWord…",24f) {
             val input=EditText(this).apply { setSingleLine(true);setText(if(catalog)catalogQuery else textSearch) }
-            AlertDialog.Builder(this).setTitle("Rechercher une image").setView(input).setPositiveButton("Rechercher"){_,_->
-                if(catalog){catalogQuery=input.text.toString();showImagesCategories()} else {textSearch=input.text.toString();updateItems()}
-            }.setNeutralButton("Effacer"){_,_->if(catalog){catalogQuery="";showImagesCategories()}else{textSearch="";updateItems()}}.setNegativeButton("Annuler",null).show()
+            AlertDialog.Builder(this).setTitle("Rechercher une $mediaWord").setView(input).setPositiveButton("Rechercher"){_,_->
+                if(catalog){catalogQuery=input.text.toString();catalogBack()} else {textSearch=input.text.toString();updateItems()}
+            }.setNeutralButton("Effacer"){_,_->if(catalog){catalogQuery="";catalogBack()}else{textSearch="";updateItems()}}.setNegativeButton("Annuler",null).show()
         }
         place(search,24,455,396,70)
         place(page.crop(37,468,44,44,"Rechercher"),37,468,44,44)
         place(page.crop(434,455,160,70,"Filtres") { if(catalog){
-            AlertDialog.Builder(this).setTitle("Afficher les catégories").setItems(arrayOf("Toutes","Avec images","Vides")){_,i->prefs.edit().putInt("catalog_filter",i).apply();showImagesCategories()}.show()
+            AlertDialog.Builder(this).setTitle("Afficher les catégories").setItems(arrayOf("Toutes","Avec ${mediaWord}s","Vides")){_,i->prefs.edit().putInt("catalog_filter",i).apply();catalogBack()}.show()
         }else chooseAlbum() },434,455,160,70)
-        text("Taille des miniatures",643,431,203,29,22f)
+        text("Taille des miniatures",610,431,234,29,18f)
         val sizeButtons=mutableListOf<TextView>()
         listOf("Petites","Moyennes","Grandes").forEachIndexed { index,name ->
             val columns=4-index
-            val btn=page.button("\n$name",20f,glow=(if(catalog)catalogColumns else thumbnailColumns)==columns) {
-                if(catalog){catalogColumns=columns;showImagesCategories()}else{
+            val btn=page.button("",13f,glow=(if(catalog)catalogColumns else thumbnailColumns)==columns) {
+                if(catalog){catalogColumns=columns;catalogBack()}else{
                     thumbnailColumns=columns;grid?.numColumns=columns;galleryAdapter?.notifyDataSetChanged()
                     sizeButtons.forEachIndexed { i,v->v.background=page.border(i==index) }
                 }
             }
+            btn.gravity=Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL;btn.maxLines=1;btn.setPadding(0,0,0,dp(2))
             sizeButtons.add(btn);place(btn,610+index*81,461,74,69)
             place(page.crop(629,470,33,31,"Miniatures"),630+index*81,470,33,31)
+            place(page.label(name,13f,cream,true).apply{setSingleLine(true)},610+index*81,504,74,23)
         }
-        text("Trier par :",26,537,107,47,24f)
+        text("Trier par :",26,537,85,47,16f)
         if(catalog){
             listOf("Date ↓","Nom","Type","Taille").forEachIndexed { i,label ->
-                place(page.button(label,23f,glow=catalogSort==i){catalogSort=i;showImagesCategories()},116+i*124,538,113,44)
+                place(page.button(label,23f,glow=catalogSort==i){catalogSort=i;catalogBack()},116+i*124,538,113,44)
             }
-            text("${galleryItems.size} image",735,539,106,44,23f)
+            text("${galleryItems.size} $mediaWord",735,539,106,44,23f)
         }else{
             val sort=page.button(arrayOf("Personnalisé","Date","Nom","Type","Taille")[mediaSort]+"  ⌄",25f) {}
             sort.setOnClickListener {
                 AlertDialog.Builder(this).setTitle("Trier par").setSingleChoiceItems(arrayOf("Personnalisé","Date","Nom","Type","Taille"),mediaSort){d,i->
-                    mediaSort=i; prefs.edit().putInt("images_sort",i).apply();sort.text=arrayOf("Personnalisé","Date","Nom","Type","Taille")[i]+"  ⌄";updateItems();d.dismiss()
+                    mediaSort=i; prefs.edit().putInt(if(video)"videos_sort" else  "images_sort",i).apply();sort.text=arrayOf("Personnalisé","Date","Nom","Type","Taille")[i]+"  ⌄";updateItems();d.dismiss()
                 }.show()
             }
             place(sort,134,538,253,50)
         }
         content.background=page.border()
-        page.put(content,24,594,820,330,stretch=true)
+        page.put(content,24,if(video)636 else 594,820,330,stretch=true)
         val actions=View(this).apply { background=page.border() };place(actions,13,-328,838,181,true)
-        val selection=page.button("ⓧ  0 image\nsélectionnée",20f) { if(catalog){catalogSelected.clear();showImagesCategories()}else{selected.clear();updateSelection()} }
+        val selection=page.button("ⓧ  0 $mediaWord\nsélectionnée",20f) { if(catalog){catalogSelected.clear();catalogBack()}else{selected.clear();updateSelection()} }
         place(selection,22,-318,165,71,true)
         val shares=listOf("com.openai.chatgpt","com.instagram.android","com.facebook.katana","")
         val bounds=listOf(intArrayOf(197,1134,150,69),intArrayOf(356,1134,150,69),intArrayOf(515,1134,151,69),intArrayOf(676,1134,167,69))
         bounds.forEachIndexed { i,a->place(page.crop(a[0],a[1],a[2],a[3],listOf("Partager ChatGPT","Partager Instagram","Partager Facebook","Plus de partages")[i]) {
-            if(catalog) shareSelectedCategories(catalogSelected.toList(),shares[i].ifEmpty{null}) else shareExactImages(shares[i].ifEmpty{null})
+            if(catalog) shareSelectedCategories(catalogSelected.toList(),shares[i].ifEmpty{null},kind) else shareExactImages(shares[i].ifEmpty{null})
         },a[0],-318,a[2],a[3],true) }
         fun selectCatalogMedia():Boolean {
             if(!catalog) return true
             selected.clear();galleryItems.filter{getCategory(it) in catalogSelected}.take(1000).forEach{selected.add(it.key)}
-            if(selected.isEmpty()){Toast.makeText(this,"Sélectionne une catégorie contenant des images",Toast.LENGTH_SHORT).show();return false};return true
+            if(selected.isEmpty()){Toast.makeText(this,"Sélectionne une catégorie contenant des ${mediaWord}s",Toast.LENGTH_SHORT).show();return false};return true
         }
         val move=page.button("Déplacer\n(0 / 1000)",21f){if(selectCatalogMedia())showMoveSelected()}
         move.setPadding(dp(20),0,dp(2),0)
@@ -561,17 +570,17 @@ class MainActivity : AppCompatActivity() {
         place(delete,425,-237,189,78,true)
         place(page.crop(449,1232,34,42,"Corbeille"),445,-218,34,42,true)
         place(page.button("☑  Tout sélectionner",23f){
-            if(catalog){catalogSelected.clear();catalogSelected.addAll(savedCategories());showImagesCategories()}
+            if(catalog){catalogSelected.clear();catalogSelected.addAll(savedCategories());catalogBack()}
             else {selected.clear();shownItems.take(1000).forEach{selected.add(it.key)};updateSelection()}
         },625,-237,216,78,true)
-        place(page.crop(0,1310,864,146,"Navigation"),0,-146,864,146,true)
-        val destinations=listOf<()->Unit>({showHome()},{showImagesCategories()},{showVideosCategories()},{navigate(Route.FAVORITES)},{showSettings()})
-        destinations.forEachIndexed { i,action->place(View(this).apply {contentDescription=listOf("Accueil","Images","Vidéos","Favoris","Paramètres")[i];isFocusable=true;setOnClickListener{action()}},i*173,-137,173,137,true) }
+        if(video)place(videoArt!!.crop(0,if(catalog)1334 else 1318,864,150,"Navigation Vidéos"),0,-146,864,146,true)else place(page.crop(0,1310,864,146,"Navigation"),0,-146,864,146,true)
+        val destinations=if(video)listOf<()->Unit>({showHome()},{showVideosCategories()},{showImagesCategories()},{navigate(Route.FAVORITES)},{showSettings()})else listOf<()->Unit>({showHome()},{showImagesCategories()},{showVideosCategories()},{navigate(Route.FAVORITES)},{showSettings()})
+        destinations.forEachIndexed { i,action->place(View(this).apply {contentDescription=(if(video)listOf("Accueil","Vidéos","Images","Favoris","Paramètres")else listOf("Accueil","Images","Vidéos","Favoris","Paramètres"))[i];isFocusable=true;setOnClickListener{action()}},i*173,-137,173,137,true) }
         exactRefresh={
             val n=if(catalog)galleryItems.count{getCategory(it) in catalogSelected} else selected.size
-            selection.text="ⓧ  $n image${if(n>1)"s" else ""}\nsélectionnée${if(n>1)"s" else ""}"
+            selection.text="ⓧ  $n $mediaWord${if(n>1)"s" else ""}\nsélectionnée${if(n>1)"s" else ""}"
             move.text="Déplacer\n($n / 1000)";delete.text="Supprimer\n($n / 100 max)"
-            count.text="${allKnownMediaKeysForCategory(cat)} image"
+            count.text="${if(video)galleryItems.count{it.mime.startsWith("video/") && getCategory(it)==cat}else allKnownMediaKeysForCategory(cat)} $mediaWord"
         }
         exactRefresh?.invoke()
         return page
@@ -582,7 +591,7 @@ class MainActivity : AppCompatActivity() {
         val medias=galleryItems.filter{it.key in selected};if(medias.isEmpty())return
         val uris=ArrayList(medias.map{it.uri})
         val intent=Intent(if(uris.size==1)Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
-            type="image/*";`package`=packageName;addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            type=if(route==Route.VIDEOS)"video/*" else  "image/*";`package`=packageName;addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if(uris.size==1)putExtra(Intent.EXTRA_STREAM,uris.first())else putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris)
             clipData=ClipData.newUri(contentResolver,"Images",uris.first()).also{c->uris.drop(1).forEach{c.addItem(ClipData.Item(it))}}
         }
@@ -591,16 +600,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCategoryCatalog(video: Boolean) {
         exactRefresh=null
-        if(video){showCategoryManager(true,CategoryEntry.VIDEOS);return}
-        val request=++generation;screenMode="images-catalog";route=Route.IMAGES;videoCategoryTab=false
+        val kind=if(video)Route.VIDEOS else Route.IMAGES
+        val word=if(video)"vidéo" else "image"
+        if(route!=kind || screenMode!=(if(video)"videos-catalog" else "images-catalog"))catalogSelected.clear()
+        val request=++generation;screenMode=if(video)"videos-catalog" else  "images-catalog";route=kind;videoCategoryTab=video
         selected.clear();categoryFilter=null;selectionActions=null;galleryEmptyState=null;grid=null;galleryAdapter=null;selectionInfo=null
         if(savedCategories().isEmpty())prefs.edit().putString("category_names",(1..8).joinToString("\u001f"){"Catégorie $it"}).apply()
         val g=GridView(this).apply {numColumns=catalogColumns;horizontalSpacing=dp(4);verticalSpacing=dp(4);setPadding(dp(2),dp(2),dp(6),dp(4));isVerticalScrollBarEnabled=true}
-        val page=exactImagePage(true,g)
+        val page=exactImagePage(true,g,video)
         var names=listOf<String>()
         fun rebuild(){
             val filter=prefs.getInt("catalog_filter",0)
-            val cats=savedCategories().filter{it.contains(catalogQuery,true)}.filter{filter==0 || (allKnownMediaKeysForCategory(it)>0)==(filter==1)}
+            val cats=savedCategories().filter{if(video)categoryScope(it)!="image" else categoryScope(it)!="video"}.filter{it.contains(catalogQuery,true)}.filter{filter==0 || (allKnownMediaKeysForCategory(it)>0)==(filter==1)}
             names=listOf("")+when(catalogSort){1->cats.sorted();2->cats.sortedBy{categoryScope(it)};3->cats.sortedByDescending{c->galleryItems.filter{getCategory(it)==c}.sumOf{it.size}};else->cats.sortedByDescending{c->galleryItems.filter{getCategory(it)==c}.maxOfOrNull{it.date} ?: 0L}}
         }
         rebuild()
@@ -614,10 +625,13 @@ class MainActivity : AppCompatActivity() {
                     orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;background=page.border(cat in catalogSelected)
                     layoutParams=AbsListView.LayoutParams(-1,((if(catalogColumns==3)168 else 504/catalogColumns)*scale).toInt())
                     if(!plus && prefs.getString("category_image_$cat",null)?.let{File(it).exists()}==true) addView(currentCategoryPhoto(cat),LinearLayout.LayoutParams(-1,0,1f))
+                    else if(video && !plus)addView(FrameLayout(this@MainActivity).apply{
+                        addView(ImagesReferenceLayout(this@MainActivity,R.drawable.videos_catalog_master).crop(396,660,72,76,"Catégorie vidéo"),FrameLayout.LayoutParams((70*scale).toInt(),(74*scale).toInt(),Gravity.CENTER))
+                    },LinearLayout.LayoutParams(-1,0,1f))
                     else addView(TextView(this@MainActivity).apply{text=if(plus)"+" else "?";setTextColor(if(plus)gold else cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,70*scale);gravity=Gravity.CENTER;includeFontPadding=false},LinearLayout.LayoutParams(-1,0,1f))
                     addView(TextView(this@MainActivity).apply{text=if(plus)"Nouvelle\ncatégorie" else  cat;typeface=android.graphics.Typeface.SERIF;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,25*scale);gravity=Gravity.CENTER;includeFontPadding=false},LinearLayout.LayoutParams(-1,-2))
-                    if(!plus)addView(TextView(this@MainActivity).apply{text="${allKnownMediaKeysForCategory(cat)} image";typeface=android.graphics.Typeface.SERIF;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,21*scale);gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2))
-                    setOnClickListener {if(plus)addCategoryDialog()else if(catalogSelected.isNotEmpty()){if(!catalogSelected.add(cat))catalogSelected.remove(cat);notifyDataSetChanged();exactRefresh?.invoke()}else openGalleryCategory(cat)}
+                    if(!plus)addView(TextView(this@MainActivity).apply{text="${if(video)galleryItems.count{getCategory(it)==cat}else allKnownMediaKeysForCategory(cat)} $word";typeface=android.graphics.Typeface.SERIF;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,21*scale);gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,-2))
+                    setOnClickListener {if(plus)addCategoryDialog()else if(catalogSelected.isNotEmpty()){if(!catalogSelected.add(cat))catalogSelected.remove(cat);notifyDataSetChanged();exactRefresh?.invoke()}else openGalleryCategory(cat,kind)}
                     setOnLongClickListener{if(!plus){if(!catalogSelected.add(cat))catalogSelected.remove(cat);notifyDataSetChanged();exactRefresh?.invoke()};true}
                 }
             }
@@ -625,19 +639,19 @@ class MainActivity : AppCompatActivity() {
         g.adapter=adapter
         if(Build.VERSION.SDK_INT>=29)g.verticalScrollbarThumbDrawable=GradientDrawable().apply{setColor(gold);cornerRadius=dp(4).toFloat()}
         setContentView(page)
-        io.execute{val medias=queryMedia(Route.IMAGES);runOnUiThread{if(generation==request){galleryItems=medias;rebuild();adapter.notifyDataSetChanged();exactRefresh?.invoke()}}}
+        io.execute{val medias=queryMedia(kind);runOnUiThread{if(generation==request){galleryItems=medias;rebuild();adapter.notifyDataSetChanged();exactRefresh?.invoke()}}}
     }
 
     private fun refreshCategoryActions() { /* state lives in the visible controls; no extra menu */ }
 
-    private fun shareSelectedCategories(categories: List<String>, packageName: String? = null) {
+    private fun shareSelectedCategories(categories: List<String>, packageName: String? = null, kind: Route = Route.IMAGES) {
         if(categories.isEmpty()){ Toast.makeText(this,"Sélectionne au moins une catégorie",Toast.LENGTH_SHORT).show(); return }
-        if(!hasPermission(Route.IMAGES)){ navigate(Route.IMAGES); return }
+        if(!hasPermission(kind)){ navigate(kind); return }
         io.execute {
-            val wanted=categories.toSet(); val media=queryMedia(Route.IMAGES).filter{getCategory(it) in wanted}
+            val wanted=categories.toSet(); val media=queryMedia(kind).filter{getCategory(it) in wanted}
             runOnUiThread {
                 if(media.isEmpty()){ Toast.makeText(this,"Aucune image à partager dans cette sélection",Toast.LENGTH_SHORT).show(); return@runOnUiThread }
-                val intent=Intent(if(media.size==1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply { type="image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                val intent=Intent(if(media.size==1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply { type=if(kind==Route.VIDEOS)"video/*" else  "image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 val uris=ArrayList(media.map{it.uri})
                 if(uris.size==1) intent.putExtra(Intent.EXTRA_STREAM,uris[0]) else intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris)
                 intent.clipData=ClipData.newUri(contentResolver,"Catégories Lapibreizh",uris.first()).also{clip->uris.drop(1).forEach{clip.addItem(ClipData.Item(it))}}
@@ -746,7 +760,7 @@ class MainActivity : AppCompatActivity() {
         categoryFilter = pendingCategory
         pendingCategory = null
         visibleLimit = 120
-        if(next==Route.IMAGES)mediaSort=prefs.getInt("images_sort",0).coerceIn(0,4)
+        if(next==Route.IMAGES || next==Route.VIDEOS)mediaSort=prefs.getInt(if(next==Route.VIDEOS)"videos_sort" else  "images_sort",0).coerceIn(0,4)
         if (next == Route.UNSORTED) unsortedFilter = UnsortedFilter.ALL
         loadGallery()
     }
@@ -813,7 +827,7 @@ class MainActivity : AppCompatActivity() {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
-        val isImageCategory = route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()
+        val isImageCategory = (route == Route.IMAGES || route == Route.VIDEOS) && categoryFilter != null && !categoryFilter.isNullOrBlank()
         if (isImageCategory) {
             search.hint = "⌕  Rechercher une image…"
             val searchRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
@@ -955,7 +969,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         g.setOnDragListener { _, event ->
-            if (event.action == android.view.DragEvent.ACTION_DROP && route == Route.IMAGES && categoryFilter != null && mediaSort == 0) {
+            if (event.action == android.view.DragEvent.ACTION_DROP && (route == Route.IMAGES || route == Route.VIDEOS) && categoryFilter != null && mediaSort == 0) {
                 val from=event.localState as? String ?: return@setOnDragListener false
                 val target=g.pointToPosition(event.x.toInt(),event.y.toInt())
                 if (target >= 0 && target < shownItems.size) {
@@ -995,13 +1009,15 @@ class MainActivity : AppCompatActivity() {
         layout.addView(navBar(route))
         if (isImageCategory) {
             visibleLimit = Int.MAX_VALUE
-            val page = exactImagePage(false, mediaArea)
+            val isVideo=route==Route.VIDEOS
+            val word=if(isVideo)"vidéo" else "image"
+            val page = exactImagePage(false, mediaArea,isVideo)
             emptyState.removeAllViews()
             emptyState.setPadding(dp(8),dp(8),dp(8),dp(8))
-            emptyState.addView(page.imageGlyph(),LinearLayout.LayoutParams(dp(58),dp(58)).apply{bottomMargin=dp(18)})
-            emptyState.addView(page.label("Aucune image dans cette catégorie",30f,cream,true))
-            emptyState.addView(page.label("Appuyez sur « Nouvelle image »\npour ajouter des images depuis votre galerie.",25f,cream,true))
-            emptyState.addView(page.button("＋  Nouvelle image",31f,glow=true){pickImagesForCategory()},LinearLayout.LayoutParams(dp(190),dp(46)).apply{topMargin=dp(16)})
+            emptyState.addView(if(isVideo)page.videoGlyph()else page.imageGlyph(),LinearLayout.LayoutParams(dp(58),dp(58)).apply{bottomMargin=dp(18)})
+            emptyState.addView(page.label("Aucune $word dans cette catégorie",30f,cream,true))
+            emptyState.addView(page.label("Appuyez sur « Nouvelle $word »\npour ajouter des ${word}s depuis votre galerie.",25f,cream,true))
+            emptyState.addView(page.button("＋  Nouvelle $word",31f,glow=true){pickImagesForCategory()},LinearLayout.LayoutParams(dp(190),dp(46)).apply{topMargin=dp(16)})
             selectionActions = null
             if(Build.VERSION.SDK_INT>=29)g.verticalScrollbarThumbDrawable=GradientDrawable().apply{setColor(gold);cornerRadius=dp(4).toFloat()}
             g.setOnItemLongClickListener { _,child,position,_->
@@ -1109,7 +1125,7 @@ class MainActivity : AppCompatActivity() {
                 (route != Route.FAVORITES || prefs.getBoolean("favorite_${media.key}", false)) && matchesSearch(media, textSearch)
         }
         shownItems = when (mediaSort) {
-            0 -> if (route==Route.IMAGES && categoryFilter!=null && !categoryFilter.isNullOrBlank()) {
+            0 -> if ((route==Route.IMAGES || route==Route.VIDEOS) && categoryFilter!=null && !categoryFilter.isNullOrBlank()) {
                 val order=customMediaOrder(categoryFilter!!,filtered.map{it.key}); val rank=order.withIndex().associate{it.value to it.index}
                 filtered.sortedBy { rank[it.key] ?: Int.MAX_VALUE }
             } else filtered.sortedByDescending { it.date }
@@ -1120,7 +1136,7 @@ class MainActivity : AppCompatActivity() {
             else -> filtered
         }
         galleryAdapter?.notifyDataSetChanged(); refreshInfo()
-        val imageCategory = route == Route.IMAGES && categoryFilter != null && !categoryFilter.isNullOrBlank()
+        val imageCategory = (route == Route.IMAGES || route == Route.VIDEOS) && categoryFilter != null && !categoryFilter.isNullOrBlank()
         val empty = imageCategory && shownItems.isEmpty()
         galleryEmptyState?.visibility = if (empty) View.VISIBLE else View.GONE
         grid?.visibility = if (empty) View.GONE else View.VISIBLE
@@ -1129,7 +1145,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun customMediaOrder(category:String, current:List<String>):List<String> {
-        val key="media_order_"+category
+        val key=(if(route==Route.VIDEOS)"media_order_videos_" else "media_order_")+category
         val saved=prefs.getString(key,"")!!.split('\u001f').filter{it.isNotBlank() && it in current}
         val merged=(saved + current.filterNot{it in saved}).distinct()
         if(merged!=saved) prefs.edit().putString(key,merged.joinToString("\u001f")).apply()
@@ -1137,7 +1153,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveCustomMediaOrder(category:String, order:List<String>) {
-        prefs.edit().putString("media_order_"+category,order.distinct().joinToString("\u001f")).apply()
+        prefs.edit().putString((if(route==Route.VIDEOS)"media_order_videos_" else "media_order_")+category,order.distinct().joinToString("\u001f")).apply()
     }
 
     private fun refreshInfo() {
@@ -1674,7 +1690,7 @@ class MainActivity : AppCompatActivity() {
         hit(25,1185,445,65,"Action par défaut des doublons") { duplicateChoice() }
         hit(500,1325,365,45,"Vider le cache") { bitmapCache.evictAll(); Toast.makeText(this,"Cache vidé",Toast.LENGTH_SHORT).show() }
         hit(500,1370,365,45,"Réinitialiser l’application") { confirmReset() }
-        hit(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version 0.6.20").setPositiveButton("OK",null).show() }
+        hit(500,1415,365,45,"À propos") { AlertDialog.Builder(this).setTitle("Les Lapibreizh").setMessage("Version " + packageManager.getPackageInfo(packageName,0).versionName).setPositiveButton("OK",null).show() }
         hit(20,1610,155,100,"Accueil") { showHome() }
         hit(180,1610,170,100,"Galerie") { showImagesCategories() }
         hit(355,1610,175,100,"Catégories") { showCategoryManager(false,CategoryEntry.SETTINGS) }
@@ -1787,197 +1803,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun categoryArtwork(category: String): Int = R.drawable.art_edit_category
 
-    private fun showCategoryEditor(category: String) {
-        generation++
-        screenMode = "editor"
-        route = Route.CATEGORIES
-        val layout = root().apply { setPadding(dp(8), dp(6), dp(8), dp(8)) }
-        layout.addView(brandHeader("Mes catégories", "Modifier", {
-            showCategoryManager(videoCategoryTab, categoryEntry)
-        }))
-        layout.addView(simpleLabel("⚙  Modifier une catégorie",22f,gold))
-        layout.addView(simpleLabel("Personnalise ta catégorie selon tes envies",12f,cream))
-
-        val identity = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity=Gravity.TOP }
-        val photoPart = FrameLayout(this)
-        photoPart.addView(currentCategoryPhoto(category), FrameLayout.LayoutParams(-1, dp(168)))
-        photoPart.addView(action("▣  Changer l’image") {
-            pendingCategoryImage = category
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                type = "image/*"; addCategory(Intent.CATEGORY_OPENABLE)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivityForResult(intent, 305)
-        }, FrameLayout.LayoutParams(-1, dp(48), Gravity.BOTTOM))
-        identity.addView(photoPart, LinearLayout.LayoutParams(0, dp(168), 0.41f).apply { rightMargin=dp(5) })
-        val fields = section("Nom de la catégorie")
-        val name = EditText(this).apply {
-            setText(category); setTextColor(cream); setSingleLine(true); textSize=15f
-            hint = "Nom"; setHintTextColor(0xFFAAAAAA.toInt())
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(15,14,12)); cornerRadius=dp(9).toFloat(); setStroke(dp(1),gold)
-            }
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-        }
-        fields.addView(name, LinearLayout.LayoutParams(-1, dp(48)))
-        val iconLabel = simpleLabel("Icônes proposées", 12f, gold)
-        fields.addView(iconLabel)
-        val icons = listOf("⚒", "♟", "❧", "▣", "⚑", "★", "+")
-        var pickedIcon = prefs.getString("category_icon_$category", "⚒") ?: "⚒"
-        val chosen = simpleLabel("Icône choisie : $pickedIcon", 12f, cream)
-        var iconPreview: TextView? = null
-        val iconPicker = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false }
-        val iconRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        icons.forEach { symbol ->
-            iconRow.addView(action(symbol) {
-                pickedIcon=symbol
-                chosen.text="Icône choisie : $pickedIcon"
-                iconPreview?.let { it.text="$pickedIcon  ${name.text}" }
-            },
-                LinearLayout.LayoutParams(dp(45), dp(45)).apply { rightMargin=dp(3) })
-        }
-        iconPicker.addView(iconRow)
-        fields.addView(iconPicker)
-        fields.addView(chosen)
-        identity.addView(fields, LinearLayout.LayoutParams(0,-2,0.59f).apply { leftMargin=dp(3) })
-        layout.addView(identity, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-
-        val count = allKnownMediaKeysForCategory(category)
-        val preview = section("Prévisualisation")
-        val previewRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
-        previewRow.addView(ImageView(this).apply {
-            val customImage = prefs.getString("category_image_$category", null)?.let { File(it) }
-            if (customImage != null && customImage.exists()) setImageBitmap(BitmapFactory.decodeFile(customImage.absolutePath))
-            else setImageBitmap(questionMarkBitmap())
-            scaleType=ImageView.ScaleType.CENTER_CROP
-            contentDescription="Prévisualisation de $category"
-        }, LinearLayout.LayoutParams(0,dp(100),0.53f))
-        val previewText=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        val liveName=simpleLabel("$pickedIcon  $category", 19f, cream)
-        iconPreview=liveName
-        previewText.addView(liveName)
-        previewText.addView(simpleLabel("$count média(s) classé(s)",12f))
-        previewRow.addView(previewText,LinearLayout.LayoutParams(0,-2,0.47f))
-        preview.addView(previewRow)
-        layout.addView(preview,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-        name.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                liveName.text="${pickedIcon}  ${s?.toString() ?: category}"
-            }
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
-        layout.addView(primaryAction("✓  Enregistrer les modifications") {
-            val newName = name.text.toString().trim().replace("\u001f", "")
-            if (newName.isBlank() || newName.length > 40 ||
-                savedCategories().any { it != category && it.equals(newName,true) }) {
-                Toast.makeText(this, "Nom vide, trop long ou déjà utilisé", Toast.LENGTH_LONG).show()
-                return@primaryAction
-            }
-            val cats = savedCategories().map { if (it == category) newName else it }
-            val e = prefs.edit().putString("category_names", cats.distinct().joinToString("\u001f"))
-            prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
-                .forEach { e.putString(it, newName) }
-            prefs.getString("category_image_$category", null)?.let {
-                e.putString("category_image_$newName",it)
-                if (newName!=category) e.remove("category_image_$category")
-            }
-            if (newName!=category) {
-                e.remove("category_icon_$category")
-                e.remove("category_scope_$category")
-                e.putString("category_alias_$category",newName)
-                e.remove("category_video_$category")
-                e.putBoolean("category_video_$newName",
-                    category in videoCatalogCategories || prefs.getBoolean("category_video_$category",false))
-                prefs.all.filterValues { it == category }.keys
-                    .filter { it.startsWith("category_alias_") }
-                    .forEach { e.putString(it,newName) }
-            }
-            e.putString("category_scope_$newName",categoryScope(category))
-            e.putString("category_icon_$newName",pickedIcon)
-            e.apply()
-            Toast.makeText(this,"Catégorie enregistrée",Toast.LENGTH_SHORT).show()
-            showCategoryManager(videoCategoryTab, categoryEntry)
-        },LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(9) })
-
-        val org = section("Organisation")
-        org.addView(rowCard("⇅","Déplacer cette catégorie","Choisir sa position dans la liste") {
-            val names=categoriesForTab(videoCategoryTab)
-            AlertDialog.Builder(this).setTitle("Placer « $category » avant…")
-                .setItems(names.mapIndexed { index, n -> "${index+1}. $n" }.toTypedArray()) { _, idx ->
-                    val ordered=savedCategories().toMutableList()
-                    if (ordered.remove(category)) {
-                        val target=names[idx]
-                        val insertion=if (target == category)
-                            savedCategories().indexOf(category).coerceAtMost(ordered.size)
-                            else ordered.indexOf(target).coerceAtLeast(0)
-                        ordered.add(insertion,category)
-                        prefs.edit().putString("category_names",ordered.joinToString("\u001f")).apply()
-                        Toast.makeText(this,"Position enregistrée",Toast.LENGTH_SHORT).show()
-                        showCategoryManager(videoCategoryTab,categoryEntry)
-                    }
-                }.setNegativeButton("Annuler",null).show()
-        })
-        layout.addView(org,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-        val statistics=section("Statistiques")
-        statistics.addView(rowCard("◴","Contenu de la catégorie","$count média(s) classé(s)") {
-            AlertDialog.Builder(this).setTitle("Voir les médias de « $category »")
-                .setItems(arrayOf("Images", "Vidéos")) { _, choice ->
-                    pendingCategory=category
-                    navigate(if(choice==0) Route.IMAGES else Route.VIDEOS)
-                }.setNegativeButton("Annuler",null).show()
-        })
-        layout.addView(statistics,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-        val danger=section("Supprimer la catégorie",
-            "Choisis ce qu’il faut faire des fichiers. Conserver les originaux est sélectionné par défaut.")
-        danger.background=GradientDrawable().apply {
-            setColor(Color.rgb(43,11,10)); cornerRadius=dp(14).toFloat()
-            setStroke(dp(1),Color.rgb(236,71,64))
-        }
-        val choice=RadioGroup(this).apply { orientation=RadioGroup.VERTICAL }
-        val keep=RadioButton(this).apply {
-            id=View.generateViewId()
-            text="Conserver les fichiers · retirer uniquement la catégorie"
-            setTextColor(cream);textSize=13f;isChecked=true
-        }
-        val trash=RadioButton(this).apply {
-            id=View.generateViewId()
-            text="Mettre aussi les fichiers à la corbeille Android (500 max)"
-            setTextColor(cream);textSize=12f
-            isEnabled=Build.VERSION.SDK_INT >= 30
-        }
-        choice.addView(keep)
-        choice.addView(trash)
-        choice.check(keep.id)
-        danger.addView(choice)
-        danger.addView(dangerAction("▣  Supprimer la catégorie") {
-            if (choice.checkedRadioButtonId == trash.id) {
-                deleteCategoryAndTrash(category)
-            } else {
-                AlertDialog.Builder(this).setTitle("Supprimer « $category » ?")
-                    .setMessage("Le classement de cette catégorie sera retiré. Aucun fichier photo ou vidéo original ne sera supprimé.")
-                    .setPositiveButton("Continuer") { _, _ ->
-                        AlertDialog.Builder(this).setTitle("Dernière confirmation")
-                            .setMessage("Confirmer la suppression de la catégorie « $category » en conservant tous les fichiers ?")
-                            .setPositiveButton("Oui, supprimer la catégorie") { _, _ ->
-                                deleteCategoryMetadata(category)
-                            }.setNegativeButton("Annuler",null).show()
-                    }.setNegativeButton("Annuler",null).show()
-            }
-        },LinearLayout.LayoutParams(-1,dp(56)))
-        layout.addView(danger)
-        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(145)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
-    }
-
-    private fun deleteCategoryMetadata(category: String) {
+    private fun deleteCategoryMetadata(category: String, keepFiles: Boolean = true) {
         prefs.getString("category_image_$category", null)?.let { path ->
             try { File(path).takeIf { it.exists() && it.parentFile == File(filesDir,"category_images") }?.delete() } catch (_:Exception) {}
         }
-        val edit = prefs.edit().putString("category_names",
-            savedCategories().filterNot { it == category }.joinToString("\u001f"))
+        val destination=if(category=="Autres")"" else "Autres"
+        val categories=savedCategories().filterNot{it==category}.toMutableList()
+        if(keepFiles && destination.isNotEmpty() && destination !in categories)categories.add(destination)
+        val edit = prefs.edit().putString("category_names",categories.joinToString("\u001f"))
         prefs.all.filterValues { it == category }.keys.filter { it.startsWith("media_") }
-            .forEach { edit.remove(it) }
+            .forEach { if(keepFiles && destination.isNotEmpty())edit.putString(it,destination)else edit.remove(it) }
         edit.remove("category_image_$category")
             .remove("category_icon_$category").remove("category_scope_$category")
             .remove("category_video_$category")
@@ -2007,8 +1842,8 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (request!=generation || screenMode!="editor") return@runOnUiThread
                 when {
-                    medias.size>500 -> AlertDialog.Builder(this).setTitle("500 fichiers maximum")
-                        .setMessage("Cette catégorie contient ${medias.size} fichiers. Classe-les en lots de 500 avant de demander la corbeille.")
+                    medias.size>100 -> AlertDialog.Builder(this).setTitle("100 fichiers maximum")
+                        .setMessage("Cette catégorie contient ${medias.size} fichiers. Classe-les en lots de 100 avant de demander la corbeille.")
                         .setPositiveButton("Compris",null).show()
                     medias.isEmpty() -> AlertDialog.Builder(this).setTitle("Aucun fichier accessible")
                         .setMessage("Aucun original accessible pour cette catégorie. Tu peux retirer uniquement son classement.")
@@ -2025,130 +1860,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun allKnownMediaKeysForCategory(category: String): Int =
         prefs.all.count { (k, v) -> k.startsWith("media_") && v == category }
-
-    private fun showAlbumImport(preselectAll: Boolean = false) {
-        screenMode = "import"
-        if (!hasPermission(Route.UNSORTED)) {
-            Toast.makeText(this,"Autorise d’abord l’accès aux photos et vidéos.",Toast.LENGTH_LONG).show()
-            navigate(Route.UNSORTED)
-            return
-        }
-        val request = ++generation
-        val layout=root().apply { setPadding(dp(8),dp(6),dp(8),dp(8)) }
-        layout.addView(brandHeader("Retour","Import des albums",{showSettings()}))
-        val heroRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL }
-        heroRow.addView(scenicImage(R.drawable.ui_import_rabbits_scene,160),
-            LinearLayout.LayoutParams(0,dp(160),0.42f))
-        val intro=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        intro.addView(heading("IMPORT DE VOS ALBUMS",19f))
-        intro.addView(note("Albums détectés sur ton appareil. Choisis manuellement leur catégorie ; les originaux restent en place."))
-        heroRow.addView(intro,LinearLayout.LayoutParams(0,-2,0.58f))
-        layout.addView(heroRow,LinearLayout.LayoutParams(-1,dp(160)))
-        val info=note("Recherche des albums non classés…")
-        layout.addView(info)
-        val albumList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        layout.addView(albumList)
-        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
-        io.execute {
-            val all=queryMedia(Route.UNSORTED)
-            val groups=all.groupBy { it.album }.toSortedMap()
-            runOnUiThread {
-                if (generation!=request || screenMode!="import") return@runOnUiThread
-                info.text="${groups.size} album(s) · ${all.size} média(s) non classé(s)"
-                val checked=linkedSetOf<String>()
-                val destinations=linkedMapOf<String,String>()
-                val summary=simpleLabel("Aucun album sélectionné",14f,gold)
-                fun updateSummary() {
-                    val count=checked.sumOf { groups[it]?.size ?: 0 }
-                    summary.text="${checked.size} album(s) sélectionné(s) · $count média(s)"
-                }
-                val headingBox=section("SÉLECTION DES ALBUMS",
-                    "Albums réellement détectés. Choisis chaque destination avant de classer.")
-                albumList.addView(headingBox,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
-                val albumChecks=linkedMapOf<String,CheckBox>()
-                albumList.addView(action("☑  Tout sélectionner / désélectionner") {
-                    val newState=checked.size!=groups.size
-                    albumChecks.values.forEach { it.isChecked=newState }
-                },LinearLayout.LayoutParams(-1,dp(49)).apply { bottomMargin=dp(7) })
-                groups.forEach { (album,medias) ->
-                    val photos=medias.count { it.mime.startsWith("image/") }
-                    val card=section(album,"${medias.size} éléments · $photos photos · ${medias.size-photos} vidéos")
-                    val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL }
-                    val checkbox=CheckBox(this).apply {
-                        setTextColor(cream);isChecked=false
-                        setOnCheckedChangeListener { _,v ->
-                            if(v) checked.add(album) else checked.remove(album)
-                            updateSummary()
-                        }
-                    }
-                    albumChecks[album]=checkbox
-                    row.addView(checkbox,LinearLayout.LayoutParams(dp(42),dp(57)))
-                    row.addView(mediaArtwork(medias.first(),65),LinearLayout.LayoutParams(dp(63),dp(65)))
-                    val destination=simpleLabel("Destination : à choisir",12f,gold)
-                    row.addView(destination,LinearLayout.LayoutParams(0,-2,1f).apply { leftMargin=dp(8) })
-                    card.addView(row)
-                    card.addView(mediaPreviewStrip(medias),LinearLayout.LayoutParams(-1,dp(75)))
-                    card.addView(action("▣  Choisir la catégorie  ›") {
-                        val cats=savedCategories()
-                        AlertDialog.Builder(this).setTitle("Classer « $album » dans…")
-                            .setItems(cats.toTypedArray()) { _,idx ->
-                                destinations[album]=cats[idx]
-                                destination.text="Vers : ${cats[idx]}"
-                                checkbox.isChecked=true
-                            }.setNegativeButton("Annuler",null).show()
-                    },LinearLayout.LayoutParams(-1,dp(51)))
-                    albumList.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
-                }
-                if (preselectAll) albumChecks.values.forEach { it.isChecked=true }
-                val footer=section("RÉCAPITULATIF")
-                footer.addView(summary)
-                footer.addView(primaryAction("⇩  Classer les albums sélectionnés") {
-                    val missing=checked.filter { destinations[it].isNullOrBlank() }
-                    val chosen=checked.flatMap { groups[it] ?: emptyList() }
-                    when {
-                        checked.isEmpty() -> Toast.makeText(this,"Sélectionne au moins un album",Toast.LENGTH_LONG).show()
-                        missing.isNotEmpty() -> AlertDialog.Builder(this).setTitle("Catégories manquantes")
-                            .setMessage("Choisis la destination de : ${missing.joinToString()}")
-                            .setPositiveButton("Compris",null).show()
-                        chosen.size>1000 -> AlertDialog.Builder(this).setTitle("1 000 éléments maximum")
-                            .setMessage("${chosen.size} fichiers sélectionnés. Réduis la sélection pour respecter la limite.")
-                            .setPositiveButton("Compris",null).show()
-                        else -> AlertDialog.Builder(this).setTitle("Valider le classement ?")
-                            .setMessage("${chosen.size} média(s) dans ${checked.size} album(s). Seul le classement Lapibreizh sera modifié, aucun fichier physique déplacé ni copié.")
-                            .setPositiveButton("Valider") { _,_->
-                                val selectedAlbums=checked.toList()
-                                val mapping=destinations.toMap()
-                                Toast.makeText(this,"Enregistrement du classement…",Toast.LENGTH_SHORT).show()
-                                io.execute {
-                                    val committed=try {
-                                        val editor=prefs.edit()
-                                        selectedAlbums.forEach { album ->
-                                            groups[album]?.forEach { media ->
-                                                editor.putString("media_${media.key}",mapping.getValue(album))
-                                            }
-                                        }
-                                        editor.commit()
-                                    } catch (_:Exception) { false }
-                                    runOnUiThread {
-                                        if (committed) {
-                                            Toast.makeText(this,"${chosen.size} médias classés",Toast.LENGTH_LONG).show()
-                                            showSettings()
-                                        } else AlertDialog.Builder(this)
-                                            .setTitle("Classement non confirmé")
-                                            .setMessage("L’enregistrement a échoué. Vérifie le stockage disponible et réessaie.")
-                                            .setPositiveButton("Compris",null).show()
-                                    }
-                                }
-                            }.setNegativeButton("Annuler",null).show()
-                    }
-                },LinearLayout.LayoutParams(-1,dp(65)))
-                albumList.addView(footer)
-                albumList.addView(section("ℹ  ORIGINAUX PRÉSERVÉS",
-                    "Cette opération n’effectue aucune copie ni aucun déplacement physique."))
-                albumList.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(145)))
-            }
-        }
-    }
 
     private fun mediaArtwork(media: Media, h: Int): ImageView {
         val image = ImageView(this).apply {
@@ -2198,103 +1909,13 @@ class MainActivity : AppCompatActivity() {
             }.setNegativeButton("Annuler", null).show()
     }
 
-    private fun showMoveProgress(medias: List<Media>, destination: String) {
-        val request = ++generation
-        screenMode = "progress"
-        val layout = root()
-        layout.addView(brandHeader("Galerie", "Médiathèque", { loadGallery() }))
-        layout.addView(visualTitleArt(R.drawable.ui_move_glyph, "CLASSEMENT EN COURS",
-            "Les originaux restent à leur emplacement. Les compteurs viennent des écritures réellement effectuées."))
-        val progressCard = section("PROGRESSION")
-        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = medias.size
-        }
-        val txt = heading("0 / ${medias.size} fichiers",20f)
-        progressCard.addView(progress,LinearLayout.LayoutParams(-1,dp(24)))
-        val percent=simpleLabel("0 %",20f,gold)
-        progressCard.addView(percent)
-        progressCard.addView(txt)
-        val origins=medias.map { getCategory(it).ifEmpty { "Non classées" } }.distinct()
-        progressCard.addView(note("Depuis : ${if (origins.size==1) origins.first() else "Plusieurs catégories"}  →  Vers : $destination"))
-        layout.addView(progressCard,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(9) })
-        layout.addView(mediaPreviewStrip(medias),LinearLayout.LayoutParams(-1,dp(94)))
-        layout.addView(section("ℹ  CLASSEMENT LOGIQUE",
-            "Une catégorie Lapibreizh est enregistrée pour chaque média. Aucun fichier physique n’est déplacé."),
-            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
-        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(142)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
-        io.execute {
-            var changed=0
-            var already=0
-            var errors=0
-            var processed=0
-            medias.chunked(25).forEach { chunk ->
-                val edits=chunk.filter { getCategory(it)!=destination }
-                already+=chunk.size-edits.size
-                val saved=if (edits.isEmpty()) true else try {
-                    val editor=prefs.edit()
-                    edits.forEach { editor.putString("media_${it.key}",destination) }
-                    editor.commit()
-                } catch (_:Exception) { false }
-                if (saved) changed+=edits.size else errors+=edits.size
-                processed+=chunk.size
-                val done=processed
-                runOnUiThread {
-                    if (request == generation && screenMode=="progress") {
-                        progress.progress=done
-                        percent.text="${done * 100 / medias.size} %"
-                        txt.text="$done / ${medias.size} fichiers"
-                    }
-                }
-            }
-            runOnUiThread {
-                if (request == generation && screenMode=="progress")
-                    showMoveResult(changed,already,errors,processed,destination)
-            }
-        }
-    }
-
-    private fun showMoveResult(changed: Int, already: Int, errors: Int,
-                               processed: Int, destination: String) {
-        screenMode = "result"
-        selected.clear()
-        val layout=root()
-        layout.addView(brandHeader("Galerie","Médiathèque",{ loadGallery() }))
-        val title=if(errors==0) "CLASSEMENT TERMINÉ !" else "CLASSEMENT PARTIEL"
-        layout.addView(visualTitleArt(R.drawable.ui_move_glyph,title,
-            "$processed fichier(s) examiné(s) · originaux inchangés"))
-        val results=section("BILAN RÉEL", "Destination : $destination")
-        results.background=GradientDrawable().apply {
-            setColor(Color.rgb(if(errors==0) 12 else 43,if(errors==0) 40 else 29,20))
-            cornerRadius=dp(15).toFloat()
-            setStroke(dp(1),if(errors==0) Color.rgb(64,185,104) else gold)
-        }
-        results.addView(simpleLabel("✓  $changed nouveau(x) classement(s) enregistré(s)",16f,Color.rgb(110,233,146)))
-        results.addView(simpleLabel("▣  $already déjà dans la catégorie",14f,gold))
-        results.addView(simpleLabel("!  $errors écriture(s) non confirmée(s)",14f,
-            if(errors>0) Color.rgb(255,121,105) else cream))
-        results.addView(simpleLabel("Total : $processed traité(s)",14f,cream))
-        layout.addView(results,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
-        layout.addView(primaryAction("▣  Voir les fichiers classés") {
-            AlertDialog.Builder(this).setTitle("Ouvrir « $destination »")
-                .setItems(arrayOf("Images","Vidéos")) { _,choice ->
-                    pendingCategory=destination
-                    navigate(if(choice==0) Route.IMAGES else Route.VIDEOS)
-                }.setNegativeButton("Annuler",null).show()
-        },LinearLayout.LayoutParams(-1,dp(57)).apply { bottomMargin=dp(7) })
-        layout.addView(action("⌂  Retour à la médiathèque") { showImagesCategories() },
-            LinearLayout.LayoutParams(-1,dp(57)))
-        layout.addView(visualFooter(),LinearLayout.LayoutParams(-1,dp(149)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black);addView(layout) })
-    }
-
     private fun showDeleteSelected() {
         screenMode = "delete"
         val medias = galleryItems.filter { selected.contains(it.key) }
         if (medias.isEmpty()) return
-        if (medias.size > 500) {
-            AlertDialog.Builder(this).setTitle("500 médias maximum")
-                .setMessage("Tu as sélectionné ${medias.size} médias. La suppression est limitée à 500 médias par opération.")
+        if (medias.size > 100) {
+            AlertDialog.Builder(this).setTitle("100 médias maximum")
+                .setMessage("Tu as sélectionné ${medias.size} médias. La suppression est limitée à 100 médias par opération.")
                 .setPositiveButton("Compris", null).show()
             return
         }
@@ -2304,7 +1925,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(visualTitleArt(R.drawable.ui_delete_glyph, "SUPPRIMER DES MÉDIAS",
             "Vérifie soigneusement ta sélection avant de continuer."))
         val selectionCard = section("✓  ${medias.size} élément(s) sélectionné(s)",
-            "Sur 500 maximum · Taille totale : ${formatBytes(total)}")
+            "Sur 100 maximum · Taille totale : ${formatBytes(total)}")
         selectionCard.addView(mediaPreviewStrip(medias))
         selectionCard.addView(simpleLabel(
             medias.take(4).joinToString("  ·  ") { it.title } +
@@ -2334,10 +1955,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun confirmTrashFinal(medias: List<Media>, categoryToDelete: String? = null) {
-        if (medias.size > 500) {
+        if (medias.size > 100) {
             AlertDialog.Builder(this)
-                .setTitle("500 médias maximum")
-                .setMessage("Cette opération contient ${medias.size} médias. Réduis la sélection à 500 maximum.")
+                .setTitle("100 médias maximum")
+                .setMessage("Cette opération contient ${medias.size} médias. Réduis la sélection à 100 maximum.")
                 .setPositiveButton("Compris", null)
                 .show()
             return
@@ -2374,12 +1995,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pickImagesForCategory() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
-            type = "image/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val video=route==Route.VIDEOS
+        val intent=Intent(Intent.ACTION_PICK,if(video)MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+            type=if(video)"video/*" else  "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        startActivityForResult(intent, 306)
+        startActivityForResult(intent,306)
     }
 
     @Deprecated("Legacy result callback used for Android media trash confirmation")
@@ -2395,7 +2016,7 @@ class MainActivity : AppCompatActivity() {
             }
             pendingTrashKeys=emptyList()
             if (categoryToDelete!=null) {
-                if (resultCode==RESULT_OK) deleteCategoryMetadata(categoryToDelete)
+                if (resultCode==RESULT_OK) deleteCategoryMetadata(categoryToDelete,false)
                 else showCategoryEditor(categoryToDelete)
                 return
             }
@@ -2407,12 +2028,10 @@ class MainActivity : AppCompatActivity() {
                 data?.data?.let{uris.add(it)}
                 data?.clipData?.let{clip->for(i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri)}
                 if(uris.isNotEmpty()) {
-                    val known=queryMedia(Route.IMAGES).associateBy{it.uri.toString()}
-                    val edit=prefs.edit(); var added=0
-                    uris.distinctBy{it.toString()}.forEach { uri ->
-                        known[uri.toString()]?.let { media -> edit.putString("media_${media.key}",category); added++ }
-                    }
-                    edit.apply(); Toast.makeText(this,"$added image(s) ajoutée(s) à $category",Toast.LENGTH_SHORT).show(); loadGallery()
+                    val known=queryMedia(if(route==Route.VIDEOS)Route.VIDEOS else Route.IMAGES).associateBy{it.uri.toString()}
+                    val assignments=uris.distinctBy{it.toString()}.mapNotNull{uri->known[uri.toString()]?.let{it to category}}
+                    if(assignments.isEmpty())Toast.makeText(this,"Aucun fichier accessible sélectionné",Toast.LENGTH_LONG).show()
+                    else beginCheckedImport(assignments)
                 }
             }
         } else if (requestCode == 305 && resultCode == RESULT_OK) {
@@ -2503,12 +2122,323 @@ class MainActivity : AppCompatActivity() {
         } catch (_:Exception){ null }
     }
 
+    private fun managementPage(art: Int, title: String, subtitle: String, back: String = "Médiathèque", onBack: () -> Unit): ImagesReferenceLayout {
+        val page=ImagesReferenceLayout(this,art,1536f,false)
+        val brand=if(art==R.drawable.manage_move_master)intArrayOf(330,72,215,109)else intArrayOf(310,18,248,137)
+        page.put(page.crop(brand[0],brand[1],brand[2],brand[3],"Les Lapibreizh · Nos souvenirs, notre histoire"),290,0,284,137)
+        page.put(page.label("‹  $back",27f,gold).apply{isFocusable=true;setOnClickListener{onBack()}},18,45,270,65)
+        page.put(View(this).apply{setBackgroundColor(gold)},14,141,836,2)
+        page.put(page.label(title,42f,gold,true),25,169,814,65)
+        page.put(page.label(subtitle,25f,cream,true),28,238,808,72)
+        return page
+    }
+    private fun managementFooter(page:ImagesReferenceLayout,art:Int,y:Int=1300,h:Int=236) {
+        val bounds=when(art){
+            R.drawable.manage_move_master->intArrayOf(90,1275,684,195)
+            R.drawable.manage_duplicate_master->intArrayOf(90,1258,684,215)
+            R.drawable.manage_import_master->intArrayOf(90,1310,684,168)
+            else->intArrayOf(90,1270,684,195)
+        }
+        page.put(page.crop(bounds[0],bounds[1],bounds[2],bounds[3],"Les Lapibreizh · Plus que des photos, une vie ensemble"),16,y,832,h)
+    }
+    private fun managementPanel(color:Int=Color.rgb(10,11,10),stroke:Int=Color.rgb(83,84,81)) = GradientDrawable().apply {
+        setColor(color);setStroke(dp(1),stroke);cornerRadius=dp(10).toFloat()
+    }
+    private fun managementPrimary(page:ImagesReferenceLayout,text:String,click:()->Unit):TextView = page.button(text,28f,click=click).apply {
+        setTextColor(Color.BLACK);typeface=android.graphics.Typeface.DEFAULT_BOLD
+        background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(0xFFFFDF86.toInt(),0xFFE7AA3C.toInt())).apply{cornerRadius=dp(10).toFloat()}
+    }
+    private fun managementShow(page:ImagesReferenceLayout) { setContentView(page) }
+
+    private fun showMoveProgress(medias:List<Media>,destination:String) {
+        runClassification(medias.map{it to destination})
+    }
+    private fun runClassification(assignments:List<Pair<Media,String>>) {
+        if(assignments.isEmpty()){Toast.makeText(this,"Aucun fichier à classer",Toast.LENGTH_SHORT).show();showSettings();return}
+        if(assignments.size>1000){Toast.makeText(this,"1 000 fichiers maximum par opération",Toast.LENGTH_LONG).show();return}
+        val request=++generation;screenMode="progress";exactRefresh=null
+        val started=android.os.SystemClock.elapsedRealtime()
+        val page=managementPage(R.drawable.manage_move_master,"Déplacement en cours","Classement de tes fichiers dans Les Lapibreizh.\nLes originaux restent dans la galerie."){showHome()}
+        page.put(View(this).apply{background=managementPanel()},22,330,820,206)
+        val progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply {
+            max=assignments.size;progressTintList=android.content.res.ColorStateList.valueOf(gold)
+        }
+        page.put(progress,50,355,650,40)
+        val percent=page.label("0 %",34f,cream,true);page.put(percent,708,350,116,50)
+        val processed=page.label("0 / ${assignments.size} fichiers",27f,cream,true);page.put(processed,40,405,784,47)
+        val origins=assignments.map{getCategory(it.first).ifEmpty{"Non classées"}}.distinct()
+        val dests=assignments.map{it.second}.distinct()
+        val origin=if(origins.size==1)origins.first()else "Plusieurs catégories"
+        val destination=if(dests.size==1)dests.first()else "Plusieurs catégories"
+        page.put(page.label("Depuis : $origin    →    Vers : $destination",24f,cream,true),42,464,780,59)
+        val preview=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        assignments.take(5).forEach{preview.addView(mediaArtwork(it.first,150),LinearLayout.LayoutParams(0,-1,1f).apply{setMargins(dp(2),0,dp(2),0)})}
+        page.put(preview,22,553,820,155)
+        val last=page.label("Préparation…",23f,cream,true);page.put(last,24,718,816,42)
+        page.put(page.label("ℹ  Si un fichier pose problème, les suivants sont traités.",24f,cream,true).apply{background=managementPanel(0xFF061622.toInt(),0xFF398FC5.toInt())},22,772,820,72)
+        val result=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;background=managementPanel(0xFF031909.toInt(),0xFF40B76D.toInt());visibility=View.GONE}
+        val title=page.label("Classement terminé !",36f,0xFF72E98E.toInt(),true)
+        val duration=page.label("",24f,cream,true)
+        val totals=page.label("",26f,cream,true)
+        result.addView(title);result.addView(duration);result.addView(totals)
+        page.put(result,22,863,820,267)
+        val open=managementPrimary(page,"Voir les fichiers classés  ›"){
+            if(dests.size==1)openGalleryCategory(dests.first(),if(assignments.all{it.first.mime.startsWith("video/")})Route.VIDEOS else Route.IMAGES)else showImagesCategories()
+        }.apply{visibility=View.GONE}
+        page.put(open,22,1150,820,83)
+        page.put(page.button("⌂  Retour à la médiathèque",26f){showHome()},22,1245,820,72)
+        managementFooter(page,R.drawable.manage_move_master,1326,210);managementShow(page)
+        io.execute {
+            var changed=0;var already=0;var errors=0
+            assignments.forEachIndexed{index,(media,dest)->
+                if(getCategory(media)==dest)already++ else {
+                    val ok=try{prefs.edit().putString("media_${media.key}",dest).commit()}catch(_:Exception){false}
+                    if(ok)changed++ else errors++
+                }
+                val done=index+1
+                runOnUiThread{if(generation==request && screenMode=="progress"){
+                    progress.progress=done;percent.text="${done*100/assignments.size} %";processed.text="$done / ${assignments.size} fichiers";last.text="Dernier fichier traité : ${media.title}"
+                }}
+            }
+            val elapsed=(android.os.SystemClock.elapsedRealtime()-started)/1000
+            runOnUiThread{if(generation==request && screenMode=="progress"){
+                screenMode="result";selected.clear();progress.progress=assignments.size;percent.text="100 %"
+                title.text=if(errors==0)"✓  Classement terminé !" else  "Classement terminé avec erreurs"
+                duration.text="${assignments.size} fichiers traités en ${elapsed/60} min ${elapsed%60} s"
+                totals.text="$changed classés avec succès  •  $already déjà présents\n$errors erreurs  •  ${assignments.size} fichiers traités"
+                result.visibility=View.VISIBLE;open.visibility=View.VISIBLE
+            }}
+        }
+    }
+
+    private var importAssignments=emptyList<Pair<Media,String>>()
+    private var importAccepted=linkedMapOf<String,Pair<Media,String>>()
+    private var importDuplicates=emptyList<Pair<Media,Media>>()
+    private var importDuplicateIndex=0
+    private var duplicateImportActive=false
+    private var duplicateApplyAll=false
+    private fun beginCheckedImport(assignments:List<Pair<Media,String>>) {
+        if(assignments.isEmpty())return
+        if(assignments.size>1000){Toast.makeText(this,"1 000 fichiers maximum par import",Toast.LENGTH_LONG).show();return}
+        val request=++generation;screenMode="import-check"
+        importAssignments=assignments;importAccepted=linkedMapOf();duplicateApplyAll=false
+        val page=managementPage(R.drawable.manage_duplicate_master,"Vérification des doublons","Comparaison du contenu des fichiers avant le classement.","Annuler"){generation++;showAlbumImport()}
+        val status=page.label("Préparation…",30f,gold,true);page.put(status,30,500,804,200)
+        managementFooter(page,R.drawable.manage_duplicate_master);managementShow(page)
+        io.execute{
+            val all=queryMedia(Route.IMAGES)+queryMedia(Route.VIDEOS)
+            val bySize=all.groupBy{it.size};val hashes=hashMapOf<String,String?>();val pairs=mutableListOf<Pair<Media,Media>>()
+            assignments.forEachIndexed{i,(candidate,destination)->
+                if(generation!=request)return@execute
+                val others=bySize[candidate.size].orEmpty().filter{it.key!=candidate.key}
+                val match=if(others.isEmpty())null else{
+                    val h=hashes.getOrPut(candidate.key){sha256(candidate)}
+                    if(h==null)null else others.firstOrNull{hashes.getOrPut(it.key){sha256(it)}==h}
+                }
+                if(match==null)importAccepted[candidate.key]=candidate to destination else pairs.add(match to candidate)
+                runOnUiThread{if(generation==request)status.text="${i+1} / ${assignments.size} fichiers vérifiés"}
+            }
+            runOnUiThread{if(generation==request){
+                importDuplicates=pairs;importDuplicateIndex=0;duplicateImportActive=pairs.isNotEmpty()
+                if(pairs.isEmpty())runClassification(importAccepted.values.toList())else showDuplicateComparison()
+            }}
+        }
+    }
+    private fun resolveImportDuplicate(keep:Boolean,all:Boolean) {
+        val end=if(all)importDuplicates.size else importDuplicateIndex+1
+        for(i in importDuplicateIndex until end){val candidate=importDuplicates[i].second
+            if(keep)importAssignments.firstOrNull{it.first.key==candidate.key}?.let{importAccepted[candidate.key]=it}
+        }
+        importDuplicateIndex=end
+        if(end<importDuplicates.size)showDuplicateComparison()else{
+            duplicateImportActive=false
+            val accepted=importAccepted.values.toList();importAssignments=emptyList();importDuplicates=emptyList()
+            if(accepted.isEmpty()){Toast.makeText(this,"Import terminé : aucun fichier ajouté",Toast.LENGTH_LONG).show();showAlbumImport()}else runClassification(accepted)
+        }
+    }
+    private fun showDuplicateComparison() {
+        screenMode="duplicate";exactRefresh=null
+        val importing=duplicateImportActive
+        val pairs=if(importing)importDuplicates else duplicatePairs
+        if(pairs.isEmpty()){showSettings();return}
+        val index=if(importing)importDuplicateIndex else duplicateIndex.coerceIn(0,pairs.lastIndex)
+        val(existing,candidate)=pairs[index]
+        fun cancel(){duplicateImportActive=false;importAssignments=emptyList();importDuplicates=emptyList();importAccepted.clear();if(importing)showAlbumImport()else showSettings()}
+        val page=managementPage(R.drawable.manage_duplicate_master,"Doublon détecté","${index+1} / ${pairs.size} · Ces fichiers ont un contenu identique.\nQue souhaites-tu faire ?"){cancel()}
+        fun card(caption:String,media:Media,x:Int){
+            page.put(View(this).apply{background=managementPanel()},x,332,366,495)
+            page.put(page.label(caption,27f,cream),x+16,343,334,40)
+            page.put(mediaArtwork(media,285),x+16,394,334,285)
+            page.put(page.label(media.title,24f,cream).apply{maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END},x+16,684,334,57)
+            page.put(page.label("${formatBytes(media.size)}\n${if(getCategory(media).isEmpty())"Album : ${media.album}" else "Catégorie : ${getCategory(media)}"}",23f,cream),x+16,744,334,73)
+        }
+        card(if(importing)"Nouveau fichier" else  "Doublon à examiner",candidate,22);card("Fichier existant",existing,476)
+        page.put(page.label("=",60f,gold,true),394,510,72,72)
+        val apply=CheckBox(this).apply{buttonTintList=android.content.res.ColorStateList.valueOf(gold);text="Appliquer ce choix aux autres doublons";setTextColor(cream);textSize=14f;isChecked=duplicateApplyAll;setOnCheckedChangeListener{_,v->duplicateApplyAll=v}}
+        page.textSize(apply,26f);page.put(apply,28,1203,800,77)
+        page.put(managementPrimary(page,"Déplacer quand même  ›\nClasser ce fichier dans une catégorie"){
+            if(importing)resolveImportDuplicate(true,apply.isChecked)else{
+                val candidates=(if(apply.isChecked)pairs.drop(index).map{it.second}else listOf(candidate)).distinctBy{it.key}
+                AlertDialog.Builder(this).setTitle("Catégorie de destination").setItems(savedCategories().toTypedArray()){_,i->runClassification(candidates.map{it to savedCategories()[i]})}.setNegativeButton("Annuler",null).show()
+            }
+        },22,852,820,98)
+        page.put(page.button("Ignorer  ›\n${if(importing)"Ne pas importer ce fichier" else  "Conserver ce fichier et continuer"}",28f){
+            if(importing)resolveImportDuplicate(false,apply.isChecked)else if(apply.isChecked){finishDuplicateSession()}else nextDuplicate()
+        },22,968,820,98)
+        page.put(page.button("×  Annuler\n${if(importing)"Retour à l’import" else  "Retour aux paramètres"}",28f){cancel()},22,1084,820,98)
+        if(!importing)page.put(page.button("⋮",38f){
+            AlertDialog.Builder(this).setTitle("Gestion des doublons").setItems(arrayOf("Sélectionner ce doublon pour la corbeille","Terminer et vérifier la sélection")){_,i->
+                if(i==0){if(duplicateTrashSelection.size<100)duplicateTrashSelection.add(candidate.key);nextDuplicate()}else finishDuplicateSession()
+            }.show()
+        },772,32,68,71)
+        managementFooter(page,R.drawable.manage_duplicate_master);managementShow(page)
+    }
+
+    private fun showAlbumImport(preselectAll:Boolean=false) {
+        if(!hasPermission(Route.UNSORTED)){Toast.makeText(this,"Autorise d’abord l’accès aux photos et vidéos",Toast.LENGTH_LONG).show();navigate(Route.UNSORTED);return}
+        val request=++generation;screenMode="import";exactRefresh=null;duplicateImportActive=false
+        val page=managementPage(R.drawable.manage_import_master,"","","Retour"){showSettings()}
+        page.put(page.label("⇩  Import des albums",24f,gold,true),602,43,238,65)
+        page.put(page.crop(60,153,270,190,"Lapins des Lapibreizh"),22,164,290,216)
+        page.put(page.label("Import de vos albums existants",32f,gold),328,184,503,76)
+        page.put(page.label("Choisis les albums à classer.\nSuggestions selon les noms des albums ;\ntu valides chaque destination.",24f,cream),328,269,503,108)
+        page.put(page.label("✓  Albums détectés     ✓  Destinations modifiables\n✓  Aucun classement sans ta validation",24f,gold,true).apply{background=managementPanel()},22,397,820,85)
+        page.put(page.label("Sélection de vos albums",30f,gold),25,495,550,47)
+        val list=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        val scroll=ScrollView(this).apply{addView(list);isFillViewport=false;background=managementPanel()}
+        page.put(scroll,22,556,820,570)
+        val summary=page.label("Recherche des albums…",23f,cream);page.put(summary,42,1145,445,110)
+        page.put(page.label("ℹ  Tes originaux restent inchangés. Le classement ne crée pas de copie.",23f,cream,true).apply{background=managementPanel(0xFF061622.toInt(),0xFF398FC5.toInt())},22,1268,820,71)
+        managementFooter(page,R.drawable.manage_import_master,1348,188)
+        val checked=linkedSetOf<String>();val destinations=linkedMapOf<String,String>();val checks=linkedMapOf<String,CheckBox>()
+        var groups=sortedMapOf<String,List<Media>>()
+        fun refresh(){val medias=checked.flatMap{groups[it].orEmpty()};val photos=medias.count{it.mime.startsWith("image/")}
+            summary.text="${checked.size} albums sélectionnés · ${medias.size} fichiers\n$photos photos · ${medias.size-photos} vidéos\nVolume des fichiers : ${formatBytes(medias.sumOf{it.size})}"
+        }
+        page.put(page.button("☑  Tout sélectionner",23f){val state=checked.size!=groups.size;checks.values.forEach{it.isChecked=state}},581,496,261,48)
+        page.put(managementPrimary(page,"⇩  Lancer l’import"){
+            val missing=checked.filter{destinations[it].isNullOrBlank()}
+            when {
+                checked.isEmpty()->Toast.makeText(this,"Sélectionne au moins un album",Toast.LENGTH_SHORT).show()
+                missing.isNotEmpty()->AlertDialog.Builder(this).setTitle("Destination à choisir").setMessage(missing.joinToString("\n")).setPositiveButton("Compris",null).show()
+                else->{val assignments=checked.flatMap{album->groups[album].orEmpty().map{it to destinations.getValue(album)}}
+                    if(assignments.size>1000)Toast.makeText(this,"1 000 fichiers maximum : réduis ta sélection",Toast.LENGTH_LONG).show()
+                    else AlertDialog.Builder(this).setTitle("Importer ${assignments.size} fichiers ?").setMessage("Les doublons seront vérifiés avant de modifier le classement. Tes originaux restent dans la galerie.").setPositiveButton("Continuer"){_,_->beginCheckedImport(assignments)}.setNegativeButton("Annuler",null).show()
+                }
+            }
+        },505,1150,317,103)
+        managementShow(page)
+        io.execute{val media=queryMedia(Route.UNSORTED);val grouped=media.groupBy{it.album}.toSortedMap()
+            runOnUiThread{if(generation==request && screenMode=="import"){
+                groups=grouped;val scale=resources.displayMetrics.widthPixels/864f
+                fun px(n:Int)=(n*scale).toInt()
+                fun albumText(t:String,size:Float)=TextView(this).apply{text=t;setTextColor(cream);setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,size*scale);gravity=Gravity.CENTER_VERTICAL;maxLines=3;ellipsize=android.text.TextUtils.TruncateAt.END}
+                fun norm(t:String)=java.text.Normalizer.normalize(t,java.text.Normalizer.Form.NFD).replace("\\p{M}".toRegex(),"").lowercase()
+                grouped.forEach{(album,items)->
+                    val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;background=managementPanel();setPadding(px(5),px(5),px(5),px(5))}
+                    val checkbox=CheckBox(this).apply{buttonTintList=android.content.res.ColorStateList.valueOf(gold);setOnCheckedChangeListener{_,v->if(v)checked.add(album)else checked.remove(album);refresh()}}
+                    checks[album]=checkbox;row.addView(checkbox,LinearLayout.LayoutParams(px(46),-1))
+                    row.addView(mediaArtwork(items.first(),70),LinearLayout.LayoutParams(px(74),px(76)))
+                    val photos=items.count{it.mime.startsWith("image/")}
+                    row.addView(albumText("$album\n${items.size} fichiers\n$photos photos · ${items.size-photos} vidéos",19f),LinearLayout.LayoutParams(0,-1,1f).apply{leftMargin=px(9)})
+                    items.take(3).forEach{m->val frame=FrameLayout(this);frame.addView(mediaArtwork(m,55),FrameLayout.LayoutParams(-1,-1));if(m.mime.startsWith("video/"))frame.addView(albumText("▶",24f),FrameLayout.LayoutParams(-1,-1));row.addView(frame,LinearLayout.LayoutParams(px(52),px(59)).apply{rightMargin=px(4)})}
+                    val suggested=savedCategories().firstOrNull{norm(it)==norm(album)} ?: savedCategories().firstOrNull{c->norm(c).length>3 && (norm(album).contains(norm(c))||norm(c).contains(norm(album)))}
+                    if(suggested!=null)destinations[album]=suggested
+                    val destination=albumText("Catégorie\n${suggested ?: "À choisir"}  ›",20f).apply{setTextColor(gold);background=managementPanel()}
+                    destination.setOnClickListener{val cats=savedCategories();AlertDialog.Builder(this).setTitle("Classer « $album » dans…").setItems(cats.toTypedArray()){_,i->destinations[album]=cats[i];destination.text="Catégorie\n${cats[i]}  ›";checkbox.isChecked=true}.setNegativeButton("Annuler",null).show()}
+                    row.addView(destination,LinearLayout.LayoutParams(px(218),-1).apply{leftMargin=px(5)})
+                    list.addView(row,LinearLayout.LayoutParams(-1,px(100)).apply{bottomMargin=px(6)})
+                }
+                if(preselectAll)checks.values.forEach{it.isChecked=true};refresh()
+                if(grouped.isEmpty())list.addView(albumText("Aucun album accessible sur cet appareil.",27f))
+            }}
+        }
+    }
+
+    private fun saveCategoryChanges(category:String,newName:String,icon:String):Boolean {
+        if(newName.isBlank() || newName.length>40 || savedCategories().any{it!=category && it.equals(newName,true)}){
+            Toast.makeText(this,"Nom vide, trop long ou déjà utilisé",Toast.LENGTH_LONG).show();return false
+        }
+        val edit=prefs.edit().putString("category_names",savedCategories().map{if(it==category)newName else it}.distinct().joinToString("\u001f"))
+        edit.putString("category_icon_$newName",icon).putString("category_scope_$newName",categoryScope(category))
+        if(category!=newName){
+            prefs.all.filterValues{it==category}.keys.filter{it.startsWith("media_") || it.startsWith("category_alias_")}.forEach{edit.putString(it,newName)}
+            listOf("category_image_","media_order_","media_order_videos_").forEach{prefix->prefs.getString(prefix+category,null)?.let{edit.putString(prefix+newName,it)};edit.remove(prefix+category)}
+            edit.putString("category_alias_$category",newName).remove("category_icon_$category").remove("category_scope_$category")
+            edit.putBoolean("category_video_$newName",prefs.getBoolean("category_video_$category",false)).remove("category_video_$category")
+        }
+        return edit.commit()
+    }
+    private fun showCategoryEditor(category:String) {
+        val request=++generation;screenMode="editor";route=Route.CATEGORIES;exactRefresh=null
+        val page=managementPage(R.drawable.manage_category_master,"⚙  Modifier une catégorie","Personnalise ta catégorie selon tes envies","Mes catégories"){showCategoryManager(videoCategoryTab,categoryEntry)}
+        val name=EditText(this).apply{setText(category);setTextColor(cream);setSingleLine(true);textSize=15f;setPadding(dp(8),0,dp(8),0);background=managementPanel(Color.BLACK,gold)}
+        page.textSize(name,29f)
+        var picked=prefs.getString("category_icon_$category","⚒") ?: "⚒"
+        val live=page.label("$picked  $category",32f,cream)
+        val count=page.label("${allKnownMediaKeysForCategory(category)} fichiers",24f,cream)
+        fun save():String?{val value=name.text.toString().trim().replace("\u001f","");return if(saveCategoryChanges(category,value,picked))value else null}
+        page.put(page.button("Enregistrer",22f){save()?.let{Toast.makeText(this,"Catégorie enregistrée",Toast.LENGTH_SHORT).show();showCategoryEditor(it)}},687,48,153,60)
+        page.put(currentCategoryPhoto(category),25,319,250,230)
+        page.put(page.button("▣  Changer l’image",21f){
+            val saved=save();if(saved!=null){pendingCategoryImage=saved
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{type="image/*";addCategory(Intent.CATEGORY_OPENABLE);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},305)
+            }
+        },30,489,240,54)
+        page.put(page.label("Nom de la catégorie",24f,cream),298,315,535,42);page.put(name,298,361,535,59)
+        page.put(page.label("Icônes proposées",23f,cream),298,431,535,35)
+        val symbols=listOf("⚒","♟","❧","▣","⚑","★","♨","+")
+        val iconSources=listOf(intArrayOf(315,415,34,37),intArrayOf(378,416,33,34),intArrayOf(439,419,32,30),intArrayOf(499,422,31,26),intArrayOf(559,417,26,34),intArrayOf(619,424,31,23),intArrayOf(682,417,31,33),intArrayOf(749,414,30,43))
+        val iconNames=listOf("Bricolage","Animaux","Nature","Photos","Restaurant","Sport","Cuisine","Autre")
+        val buttons=mutableListOf<TextView>()
+        symbols.forEachIndexed{i,symbol->val b=page.button(symbol,32f,glow=picked==symbol){
+            if(symbol=="+"){val input=EditText(this).apply{setSingleLine(true)};AlertDialog.Builder(this).setTitle("Icône ou symbole").setView(input).setPositiveButton("Choisir"){_,_->picked=input.text.toString().take(4).ifBlank{"★"};live.text="$picked  ${name.text}"}.setNegativeButton("Annuler",null).show()}
+            else{picked=symbol;live.text="$picked  ${name.text}";buttons.forEachIndexed{j,v->v.background=page.border(i==j)}}
+        };b.text="";b.contentDescription=iconNames[i];buttons.add(b);page.put(b,298+i*67,472,61,70)
+            val src=iconSources[i];page.put(page.crop(src[0],src[1],src[2],src[3],iconNames[i]),310+i*67,488,36,39)
+        }
+        page.put(View(this).apply{background=managementPanel()},22,568,820,210)
+        page.put(page.label("Prévisualisation",25f,gold),39,574,780,36)
+        page.put(currentCategoryPhoto(category),40,618,410,144)
+        page.put(live,470,638,351,66);page.put(count,470,710,351,44)
+        name.addTextChangedListener(object:android.text.TextWatcher{
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){live.text="$picked  $s"}
+            override fun afterTextChanged(s:android.text.Editable?){}
+        })
+        page.put(page.label("Organisation",26f,gold),24,785,812,39)
+        page.put(page.button("⇅  Déplacer cette catégorie  ›\nChoisis sa position dans la liste",25f){
+            val cats=savedCategories();AlertDialog.Builder(this).setTitle("Placer avant…").setItems(cats.toTypedArray()){_,i->val order=cats.toMutableList();order.remove(category);order.add(if(cats[i]==category)cats.indexOf(category).coerceAtMost(order.size)else order.indexOf(cats[i]).coerceAtLeast(0),category);prefs.edit().putString("category_names",order.joinToString("\u001f")).apply();Toast.makeText(this,"Position enregistrée",Toast.LENGTH_SHORT).show()}.show()
+        },22,830,820,81)
+        page.put(page.label("Statistiques",26f,gold),24,919,812,38)
+        val stats=page.button("◴  Contenu de la catégorie  ›\nChargement…",24f){AlertDialog.Builder(this).setTitle(category).setItems(arrayOf("Images","Vidéos")){_,i->openGalleryCategory(category,if(i==0)Route.IMAGES else Route.VIDEOS)}.show()}
+        page.put(stats,22,960,820,78)
+        page.put(View(this).apply{background=managementPanel(0xFF210302.toInt(),0xFFE44949.toInt())},22,1052,820,301)
+        page.put(page.label("Supprimer la catégorie",28f,0xFFFF6868.toInt()),44,1062,776,47)
+        val choices=RadioGroup(this).apply{orientation=RadioGroup.VERTICAL}
+        val keep=RadioButton(this).apply{buttonTintList=android.content.res.ColorStateList.valueOf(gold);id=View.generateViewId();text="Conserver les fichiers (recommandé)\nIls seront classés dans « Autres ».";setTextColor(cream);textSize=13f}
+        val trash=RadioButton(this).apply{buttonTintList=android.content.res.ColorStateList.valueOf(gold);id=View.generateViewId();text="Mettre également les fichiers à la corbeille Android\n100 fichiers maximum, avec confirmations.";setTextColor(cream);textSize=12f;isEnabled=Build.VERSION.SDK_INT>=30}
+        page.textSize(keep,26f);page.textSize(trash,24f)
+        choices.addView(keep,LinearLayout.LayoutParams(-1,0,1f));choices.addView(trash,LinearLayout.LayoutParams(-1,0,1f));choices.check(keep.id)
+        page.put(choices,42,1110,780,153)
+        page.put(page.button("Supprimer la catégorie",28f,red=true){
+            if(choices.checkedRadioButtonId==trash.id)deleteCategoryAndTrash(category)else AlertDialog.Builder(this).setTitle("Supprimer « $category » ?").setMessage("Les fichiers seront conservés et classés dans « Autres ».").setPositiveButton("Continuer"){_,_->AlertDialog.Builder(this).setTitle("Dernière confirmation").setMessage("Supprimer cette catégorie en conservant les fichiers ?").setPositiveButton("Confirmer"){_,_->deleteCategoryMetadata(category)}.setNegativeButton("Annuler",null).show()}.setNegativeButton("Annuler",null).show()
+        },65,1273,734,62)
+        managementFooter(page,R.drawable.manage_category_master,1363,173);managementShow(page)
+        io.execute{val medias=(queryMedia(Route.IMAGES)+queryMedia(Route.VIDEOS)).filter{getCategory(it)==category};val photos=medias.count{it.mime.startsWith("image/")}
+            runOnUiThread{if(generation==request && screenMode=="editor"){count.text="${medias.size} fichiers";stats.text="◴  Contenu de la catégorie  ›\n${medias.size} fichiers · $photos images · ${medias.size-photos} vidéos · ${formatBytes(medias.sumOf{it.size})}"}}
+        }
+    }
+
     private fun findDuplicates() {
+        duplicateImportActive=false;duplicateApplyAll=false
         if (!hasPermission(Route.UNSORTED)) {
             Toast.makeText(this, "Autorise d’abord l’accès aux médias.", Toast.LENGTH_LONG).show()
             navigate(Route.UNSORTED)
             return
         }
+        val request=++generation
+        screenMode="duplicate-scan"
         val layout = root()
         layout.addView(action("‹ Annuler") { showSettings() })
         layout.addView(heading("RECHERCHE DES DOUBLONS"))
@@ -2520,15 +2450,16 @@ class MainActivity : AppCompatActivity() {
                 .groupBy { it.size }.values.filter { it.size > 1 }.flatten()
             val groups = linkedMapOf<String, MutableList<Media>>()
             all.forEachIndexed { index, media ->
+                if(request!=generation || Thread.currentThread().isInterrupted)return@execute
                 val hash = sha256(media)
                 if (hash != null) groups.getOrPut(hash) { mutableListOf() }.add(media)
-                if (index % 10 == 0) runOnUiThread { info.text = "${index + 1} / ${all.size} médias analysés…" }
+                if (index % 10 == 0) runOnUiThread { if(request==generation)info.text = "${index + 1} / ${all.size} médias analysés…" }
             }
             val dupes = groups.values.filter { it.size > 1 }
-            duplicatePairs = dupes.flatMap { group -> group.drop(1).map { group.first() to it } }
-            duplicateIndex = 0
-            duplicateTrashSelection.clear()
+            val pairs = dupes.flatMap { group -> group.drop(1).map { group.first() to it } }
             runOnUiThread {
+                if(request!=generation)return@runOnUiThread
+                duplicatePairs=pairs;duplicateIndex=0;duplicateTrashSelection.clear()
                 if (duplicatePairs.isEmpty()) {
                     AlertDialog.Builder(this).setTitle("Doublons")
                         .setMessage("Aucun doublon strictement identique trouvé.")
@@ -2553,42 +2484,6 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         }
-    }
-
-    private fun showDuplicateComparison() {
-        screenMode = "duplicate"
-        if (duplicatePairs.isEmpty()) { showSettings(); return }
-        duplicateIndex = duplicateIndex.coerceIn(0, duplicatePairs.lastIndex)
-        val (existing, candidate) = duplicatePairs[duplicateIndex]
-        val layout = root()
-        layout.addView(brandHeader("Paramètres", "Médiathèque", { showSettings() }))
-        layout.addView(visualTitleArt(R.drawable.ui_duplicate_glyph, "DOUBLON DÉTECTÉ",
-            "${duplicateIndex + 1} sur ${duplicatePairs.size} · fichiers strictement identiques (SHA-256)"))
-
-        fun card(title: String, media: Media): LinearLayout = section(title).apply {
-            addView(mediaArtwork(media, 190), LinearLayout.LayoutParams(-1, dp(190)))
-            addView(heading(media.title, 16f))
-            addView(note("Album : ${media.album} · Catégorie : ${getCategory(media).ifEmpty { "Non classées" }} · ${formatBytes(media.size)}"))
-        }
-        val pair = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        pair.addView(card("IMAGE EXISTANTE", existing), LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=dp(4) })
-        pair.addView(card("DOUBLON À EXAMINER", candidate), LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(4) })
-        layout.addView(pair, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
-        val marked = duplicateTrashSelection.contains(candidate.key)
-        layout.addView(primaryAction(if (marked) "✓ Retirer de la sélection corbeille" else "▣ Sélectionner ce doublon pour la corbeille") {
-            if (!duplicateTrashSelection.add(candidate.key)) duplicateTrashSelection.remove(candidate.key)
-            showDuplicateComparison()
-        }, LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(8) })
-        layout.addView(action("Conserver les deux") { duplicateTrashSelection.remove(candidate.key); nextDuplicate() },
-            LinearLayout.LayoutParams(-1,dp(54)).apply { bottomMargin=dp(8) })
-        val nav = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        nav.addView(action("‹ Précédent") { if (duplicateIndex > 0) { duplicateIndex--; showDuplicateComparison() } }, LinearLayout.LayoutParams(0,dp(52),1f))
-        nav.addView(action("Suivant ›") { nextDuplicate() }, LinearLayout.LayoutParams(0,dp(52),1f))
-        layout.addView(nav)
-        layout.addView(primaryAction("Terminer la comparaison") { finishDuplicateSession() }, LinearLayout.LayoutParams(-1,dp(56)).apply { topMargin=dp(8) })
-        layout.addView(note("Aucune suppression automatique. Tu gardes toujours le contrôle."))
-        layout.addView(visualFooter(), LinearLayout.LayoutParams(-1,dp(145)))
-        setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(layout) })
     }
 
     private fun nextDuplicate() {
@@ -2644,13 +2539,14 @@ class MainActivity : AppCompatActivity() {
         when(screenMode) {
             "home" -> super.onBackPressed()
             "dashboard" -> showHome()
-            "images-catalog" -> showImagesCategories()
-            "videos-catalog" -> showVideosCategories()
+            "images-catalog" -> showHome()
+            "videos-catalog" -> showHome()
             "gallery" -> if (route == Route.VIDEOS) showVideosCategories() else showImagesCategories()
             "categories" -> exitCategoryManager()
             "editor" -> showCategoryManager(videoCategoryTab, categoryEntry)
             "crop-category" -> { pendingCategoryImage?.let { showCategoryEditor(it) } ?: showCategoryManager(videoCategoryTab, categoryEntry) }
-            "import", "duplicate" -> showSettings()
+            "import-check" -> { generation++;showAlbumImport() }
+            "import", "duplicate", "duplicate-scan" -> { generation++;duplicateImportActive=false;showSettings() }
             "delete", "progress", "result" -> loadGallery()
             else -> showHome()
         }

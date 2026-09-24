@@ -12,8 +12,8 @@ android {
         applicationId = "fr.leslapibreizh.mediatheque"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "0.6.33"
+        versionCode = 40
+        versionName = "0.6.34"
     }
     signingConfigs {
         if (hasPrivateSigning) create("lapibreizh") {
@@ -22,10 +22,13 @@ android {
         }
     }
     buildTypes { getByName("release") { isMinifyEnabled=false;if(hasPrivateSigning)signingConfig=signingConfigs.getByName("lapibreizh") } }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions { sourceCompatibility=JavaVersion.VERSION_17;targetCompatibility=JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget="17" }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
