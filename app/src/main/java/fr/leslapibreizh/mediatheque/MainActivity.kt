@@ -805,7 +805,15 @@ class MainActivity : AppCompatActivity() {
             val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             filters.addView(action("Albums") { chooseAlbum() }, LinearLayout.LayoutParams(0, dp(50), 1f))
             filters.addView(action("Catégories") { chooseCategory() }, LinearLayout.LayoutParams(0, dp(50), 1f))
-            filters.addView(action("Trier par ▾") { chooseSort() }, LinearLayout.LayoutParams(0, dp(50), 1f))
+            filters.addView(action("Trier par ▾") {
+                AlertDialog.Builder(this).setTitle("Trier par")
+                    .setSingleChoiceItems(arrayOf("Personnalisé","Date","Nom","Type","Taille"), mediaSort) { dialog,index ->
+                        mediaSort=index
+                        updateItems()
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton("Annuler",null).show()
+            }, LinearLayout.LayoutParams(0, dp(50), 1f))
             layout.addView(filters)
         }
         selectionActions = LinearLayout(this).apply {
