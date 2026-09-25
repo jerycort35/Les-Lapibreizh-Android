@@ -1,9 +1,0 @@
-LES LAPIBREIZH — CORRECTIF 0.4.1
-
-Accueil : couverture non rognée, deux véritables cartes cliquables tirées de la maquette, quatre raccourcis et footer qui remplit le bas au lieu du grand vide noir.
-Images et Vidéos : catégories illustrées plus compactes, recherche de catégories, données réelles, galeries avec tailles de vignettes et durée vidéo lorsqu'elle existe.
-Aucune suppression automatique. Données locales et sauvegardes JSON compatibles avec V0.4.
-
-L'archive complète contient également la signature RELEASE dans .github/workflows/build-apk.yml. Le fichier .github est caché par certains explorateurs Android : vérifier qu'il est bien copié. L'ancienne version en ligne compilait toujours app-debug.apk ; sans remplacement du workflow la nouvelle signature ne fonctionne PAS.
-
-NE PAS DÉSINSTALLER L'APPLICATION INSTALLÉE. NE PAS PUBLIER LE KIT PRIVÉ.

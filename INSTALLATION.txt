@@ -1,9 +1,0 @@
-Les Lapibreizh V0.3 — SOURCES à compiler (pas un APK).
-
-1. Extraire le ZIP dans la racine du dépôt Gitling Les-Lapibreizh-Android : remplacer les fichiers existants, ne pas créer de dossier supplémentaire.
-2. Gitling : État → Stage all → Commit (message « Médiathèque V0.3 ») → Push tout.
-3. GitHub : Actions → dernier Build Android APK → attendre le voyant vert → Artifacts → Les-Lapibreizh-APK → ZIP → app-debug.apk.
-4. Attention : Android peut demander de désinstaller V0.2 à cause de signatures debug différentes. Cela effacera les catégories internes V0.2 (dont les 42 captures test), MAIS PAS les photos originales. La V0.2 ne permet pas de les sauvegarder.
-5. Tester sur seulement deux captures sans importance. Dans V0.3, Paramètres → Exporter la sauvegarde JSON avant toute future désinstallation.
-
-Les nouvelles fonctions V0.3 n'ont pas encore été compilées/testées sur le téléphone. Aucune suppression automatique ; la corbeille agit sur les originaux uniquement après ta double validation.

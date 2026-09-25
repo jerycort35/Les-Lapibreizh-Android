@@ -1,4 +1,0 @@
-Les Lapibreizh — V0.6.8 FINAL RELEASE SIGNEE
-Workflow attendu : Build Android APK - RELEASE 0.6.8
-Commande attendue : gradle assembleRelease
-APK attendue : app-release.apk
